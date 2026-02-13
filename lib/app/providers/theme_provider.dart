@@ -123,17 +123,17 @@ class ThemeProvider extends ChangeNotifier {
           ),
         ),
         switchTheme: SwitchThemeData(
-          thumbColor: MaterialStateProperty.resolveWith((states) {
-            if (states.contains(MaterialState.selected)) {
+          thumbColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
               return AppColors.cyanoBlue;
             }
             return AppColors.textSecondary;
           }),
-          trackColor: MaterialStateProperty.resolveWith((states) {
-            if (states.contains(MaterialState.selected)) {
-              return AppColors.cyanoBlue.withOpacity(0.3);
+          trackColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return AppColors.cyanoBlue.withValues(alpha: 0.3);
             }
-            return AppColors.textSecondary.withOpacity(0.3);
+            return AppColors.textSecondary.withValues(alpha: 0.3);
           }),
         ),
         floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -183,7 +183,7 @@ class ThemeProvider extends ChangeNotifier {
             backgroundColor: AppColors.cyanoBlue,
             foregroundColor: AppColors.textOnPrimary,
             elevation: 2,
-            shadowColor: Colors.black.withOpacity(0.3),
+            shadowColor: Colors.black.withValues(alpha: 0.3),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -207,17 +207,17 @@ class ThemeProvider extends ChangeNotifier {
           ),
         ),
         switchTheme: SwitchThemeData(
-          thumbColor: MaterialStateProperty.resolveWith((states) {
-            if (states.contains(MaterialState.selected)) {
+          thumbColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
               return AppColors.cyanoBlue;
             }
             return AppColors.textSecondary;
           }),
-          trackColor: MaterialStateProperty.resolveWith((states) {
-            if (states.contains(MaterialState.selected)) {
-              return AppColors.cyanoBlue.withOpacity(0.3);
+          trackColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return AppColors.cyanoBlue.withValues(alpha: 0.3);
             }
-            return AppColors.textSecondary.withOpacity(0.3);
+            return AppColors.textSecondary.withValues(alpha: 0.3);
           }),
         ),
         floatingActionButtonTheme: const FloatingActionButtonThemeData(

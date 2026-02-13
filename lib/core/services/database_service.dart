@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 import '../models/device.dart';
@@ -15,9 +14,7 @@ class DatabaseService {
   factory DatabaseService() => _instance;
   DatabaseService._internal() {
     // Initialize FFI database factory for Windows
-    if (databaseFactory == null) {
-      databaseFactory = databaseFactoryFfi;
-    }
+    databaseFactory = databaseFactoryFfi;
   }
 
   Database? _database;
@@ -32,7 +29,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -45,17 +42,29 @@ class DatabaseService {
         id TEXT PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
         email TEXT UNIQUE NOT NULL,
-        first_name TEXT,
-        last_name TEXT,
-        phone_number TEXT,
+        firstName TEXT,
+        lastName TEXT,
+        phoneNumber TEXT,
         role TEXT NOT NULL,
         status TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        last_login_at TEXT NOT NULL,
-        profile_image_url TEXT,
+        createdAt TEXT NOT NULL,
+        lastLoginAt TEXT NOT NULL,
+        profileImageUrl TEXT,
         preferences TEXT,
-        device_ids TEXT,
-        room_ids TEXT
+        deviceIds TEXT,
+        roomIds TEXT
+      )
+    ''');
+
+    // Create user credentials table for password storage
+    await db.execute('''
+      CREATE TABLE user_credentials (
+        id TEXT PRIMARY KEY,
+        user_id TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       )
     ''');
 
@@ -162,14 +171,61 @@ class DatabaseService {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Handle database upgrades here
+    if (oldVersion < 2) {
+      // Drop all tables to ensure clean schema update
+      await db.execute('DROP TABLE IF EXISTS settings');
+      await db.execute('DROP TABLE IF EXISTS alerts');
+      await db.execute('DROP TABLE IF EXISTS automation_rules');
+      await db.execute('DROP TABLE IF EXISTS devices');
+      await db.execute('DROP TABLE IF EXISTS rooms');
+      await db.execute('DROP TABLE IF EXISTS auth_sessions');
+      await db.execute('DROP TABLE IF EXISTS users');
+
+      await _onCreate(db, newVersion);
+    }
   }
 
   // User operations
   Future<List<User>> getAllUsers() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('users');
-    return maps.map((map) => User.fromJson(map)).toList();
+    return maps.map((map) {
+      final mutableMap = Map<String, dynamic>.from(map);
+
+      // Parse preferences if it's a JSON string
+      if (mutableMap['preferences'] is String) {
+        try {
+          mutableMap['preferences'] =
+              jsonDecode(mutableMap['preferences'] as String);
+        } catch (e) {
+          mutableMap['preferences'] = {};
+        }
+      }
+
+      // Parse deviceIds if it's a JSON string
+      if (mutableMap['deviceIds'] is String) {
+        try {
+          final List<dynamic> deviceIds =
+              jsonDecode(mutableMap['deviceIds'] as String);
+          mutableMap['deviceIds'] = deviceIds.cast<String>();
+        } catch (e) {
+          mutableMap['deviceIds'] = [];
+        }
+      }
+
+      // Parse roomIds if it's a JSON string
+      if (mutableMap['roomIds'] is String) {
+        try {
+          final List<dynamic> roomIds =
+              jsonDecode(mutableMap['roomIds'] as String);
+          mutableMap['roomIds'] = roomIds.cast<String>();
+        } catch (e) {
+          mutableMap['roomIds'] = [];
+        }
+      }
+
+      return User.fromJson(mutableMap);
+    }).toList();
   }
 
   Future<User?> getUser(String id) async {
@@ -180,7 +236,39 @@ class DatabaseService {
       whereArgs: [id],
     );
     if (maps.isNotEmpty) {
-      return User.fromJson(maps.first);
+      final userData = Map<String, dynamic>.from(maps.first);
+
+      // Parse preferences if it's a JSON string
+      if (userData['preferences'] is String) {
+        try {
+          userData['preferences'] =
+              jsonDecode(userData['preferences'] as String);
+        } catch (e) {
+          userData['preferences'] = {};
+        }
+      }
+
+      if (userData['deviceIds'] is String) {
+        try {
+          final List<dynamic> deviceIds =
+              jsonDecode(userData['deviceIds'] as String);
+          userData['deviceIds'] = deviceIds.cast<String>();
+        } catch (e) {
+          userData['deviceIds'] = [];
+        }
+      }
+
+      if (userData['roomIds'] is String) {
+        try {
+          final List<dynamic> roomIds =
+              jsonDecode(userData['roomIds'] as String);
+          userData['roomIds'] = roomIds.cast<String>();
+        } catch (e) {
+          userData['roomIds'] = [];
+        }
+      }
+
+      return User.fromJson(userData);
     }
     return null;
   }
@@ -193,7 +281,38 @@ class DatabaseService {
       whereArgs: [email],
     );
     if (maps.isNotEmpty) {
-      return User.fromJson(maps.first);
+      final userData = Map<String, dynamic>.from(maps.first);
+
+      if (userData['preferences'] is String) {
+        try {
+          userData['preferences'] =
+              jsonDecode(userData['preferences'] as String);
+        } catch (e) {
+          userData['preferences'] = {};
+        }
+      }
+
+      if (userData['deviceIds'] is String) {
+        try {
+          final List<dynamic> deviceIds =
+              jsonDecode(userData['deviceIds'] as String);
+          userData['deviceIds'] = deviceIds.cast<String>();
+        } catch (e) {
+          userData['deviceIds'] = [];
+        }
+      }
+
+      if (userData['roomIds'] is String) {
+        try {
+          final List<dynamic> roomIds =
+              jsonDecode(userData['roomIds'] as String);
+          userData['roomIds'] = roomIds.cast<String>();
+        } catch (e) {
+          userData['roomIds'] = [];
+        }
+      }
+
+      return User.fromJson(userData);
     }
     return null;
   }
@@ -206,25 +325,92 @@ class DatabaseService {
       whereArgs: [username],
     );
     if (maps.isNotEmpty) {
-      return User.fromJson(maps.first);
+      final userData = Map<String, dynamic>.from(maps.first);
+
+      if (userData['preferences'] is String) {
+        try {
+          userData['preferences'] =
+              jsonDecode(userData['preferences'] as String);
+        } catch (e) {
+          userData['preferences'] = {};
+        }
+      }
+
+      if (userData['deviceIds'] is String) {
+        try {
+          final List<dynamic> deviceIds =
+              jsonDecode(userData['deviceIds'] as String);
+          userData['deviceIds'] = deviceIds.cast<String>();
+        } catch (e) {
+          userData['deviceIds'] = [];
+        }
+      }
+
+      if (userData['roomIds'] is String) {
+        try {
+          final List<dynamic> roomIds =
+              jsonDecode(userData['roomIds'] as String);
+          userData['roomIds'] = roomIds.cast<String>();
+        } catch (e) {
+          userData['roomIds'] = [];
+        }
+      }
+
+      return User.fromJson(userData);
     }
     return null;
   }
 
   Future<void> insertUser(User user) async {
     final db = await database;
+    final userData = <String, dynamic>{
+      'id': user.id,
+      'username': user.username,
+      'email': user.email,
+      'firstName': user.firstName,
+      'lastName': user.lastName,
+      'phoneNumber': user.phoneNumber,
+      'role': user.role.toString().split('.').last,
+      'status': user.status.toString().split('.').last,
+      'createdAt': user.createdAt.toIso8601String(),
+      'lastLoginAt': user.lastLoginAt.toIso8601String(),
+      'profileImageUrl': user.profileImageUrl,
+      'preferences':
+          user.preferences != null ? jsonEncode(user.preferences) : null,
+      'deviceIds': user.deviceIds != null ? jsonEncode(user.deviceIds) : null,
+      'roomIds': user.roomIds != null ? jsonEncode(user.roomIds) : null,
+    };
+
     await db.insert(
       'users',
-      user.toJson(),
+      userData,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
   Future<void> updateUser(User user) async {
     final db = await database;
+    final userData = <String, dynamic>{
+      'id': user.id,
+      'username': user.username,
+      'email': user.email,
+      'firstName': user.firstName,
+      'lastName': user.lastName,
+      'phoneNumber': user.phoneNumber,
+      'role': user.role.toString().split('.').last,
+      'status': user.status.toString().split('.').last,
+      'createdAt': user.createdAt.toIso8601String(),
+      'lastLoginAt': user.lastLoginAt.toIso8601String(),
+      'profileImageUrl': user.profileImageUrl,
+      'preferences':
+          user.preferences != null ? jsonEncode(user.preferences) : null,
+      'deviceIds': user.deviceIds != null ? jsonEncode(user.deviceIds) : null,
+      'roomIds': user.roomIds != null ? jsonEncode(user.roomIds) : null,
+    };
+
     await db.update(
       'users',
-      user.toJson(),
+      userData,
       where: 'id = ?',
       whereArgs: [user.id],
     );
@@ -243,7 +429,7 @@ class DatabaseService {
   Future<List<AuthSession>> getAllAuthSessions() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('auth_sessions');
-    return maps.map((map) => AuthSession.fromJson(map)).toList();
+    return maps.map((map) => _deserializeAuthSession(map)).toList();
   }
 
   Future<AuthSession?> getAuthSession(String id) async {
@@ -254,7 +440,7 @@ class DatabaseService {
       whereArgs: [id],
     );
     if (maps.isNotEmpty) {
-      return AuthSession.fromJson(maps.first);
+      return _deserializeAuthSession(maps.first);
     }
     return null;
   }
@@ -267,7 +453,7 @@ class DatabaseService {
       whereArgs: [token],
     );
     if (maps.isNotEmpty) {
-      return AuthSession.fromJson(maps.first);
+      return _deserializeAuthSession(maps.first);
     }
     return null;
   }
@@ -280,23 +466,69 @@ class DatabaseService {
       whereArgs: [userId],
       orderBy: 'created_at DESC',
     );
-    return maps.map((map) => AuthSession.fromJson(map)).toList();
+    return maps.map((map) => _deserializeAuthSession(map)).toList();
+  }
+
+  AuthSession _deserializeAuthSession(Map<String, dynamic> map) {
+    final m = Map<String, dynamic>.from(map);
+
+    final converted = <String, dynamic>{
+      'id': m['id'],
+      'userId': m['user_id'],
+      'token': m['token'],
+      'refreshToken': m['refresh_token'],
+      'createdAt': m['created_at'],
+      'expiresAt': m['expires_at'],
+      'deviceId': m['device_id'],
+      'ipAddress': m['ip_address'],
+      'userAgent': m['user_agent'],
+      'isActive':
+          m['is_active'] is int ? (m['is_active'] == 1) : (m['is_active'] == true),
+    };
+
+    return AuthSession.fromJson(converted);
   }
 
   Future<void> insertAuthSession(AuthSession session) async {
     final db = await database;
+    final data = {
+      'id': session.id,
+      'user_id': session.userId,
+      'token': session.token,
+      'refresh_token': session.refreshToken,
+      'created_at': session.createdAt.toIso8601String(),
+      'expires_at': session.expiresAt.toIso8601String(),
+      'device_id': session.deviceId,
+      'ip_address': session.ipAddress,
+      'user_agent': session.userAgent,
+      'is_active': session.isActive ? 1 : 0,
+    };
+
     await db.insert(
       'auth_sessions',
-      session.toJson(),
+      data,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
   Future<void> updateAuthSession(AuthSession session) async {
     final db = await database;
+    final data = {
+      'id': session.id,
+      'user_id': session.userId,
+      'token': session.token,
+      'refresh_token': session.refreshToken,
+      'created_at': session.createdAt.toIso8601String(),
+      'expires_at': session.expiresAt.toIso8601String(),
+      'device_id': session.deviceId,
+      'ip_address': session.ipAddress,
+      'user_agent': session.userAgent,
+      'is_active': session.isActive ? 1 : 0,
+    };
+
     await db.update(
       'auth_sessions',
-      session.toJson(),
+      data,
       where: 'id = ?',
       whereArgs: [session.id],
     );
@@ -333,7 +565,9 @@ class DatabaseService {
   Future<List<Room>> getAllRooms() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('rooms');
-    return maps.map((map) => Room.fromJson(map)).toList();
+    return maps.map((map) {
+      return _deserializeRoom(map);
+    }).toList();
   }
 
   Future<Room?> getRoom(String id) async {
@@ -344,25 +578,72 @@ class DatabaseService {
       whereArgs: [id],
     );
     if (maps.isNotEmpty) {
-      return Room.fromJson(maps.first);
+      return _deserializeRoom(maps.first);
     }
     return null;
   }
 
+  Room _deserializeRoom(Map<String, dynamic> map) {
+    final mutableMap = Map<String, dynamic>.from(map);
+
+    // Convert snake_case to camelCase
+    if (mutableMap.containsKey('device_ids')) {
+      final value = mutableMap.remove('device_ids');
+      if (value is String) {
+        try {
+          final List<dynamic> deviceIds = jsonDecode(value);
+          mutableMap['deviceIds'] = deviceIds.cast<String>();
+        } catch (e) {
+          mutableMap['deviceIds'] = [];
+        }
+      } else {
+        mutableMap['deviceIds'] = value ?? [];
+      }
+    }
+
+    if (mutableMap.containsKey('created_at')) {
+      mutableMap['createdAt'] = mutableMap.remove('created_at');
+    }
+
+    if (mutableMap.containsKey('updated_at')) {
+      mutableMap['lastUpdated'] = mutableMap.remove('updated_at');
+    }
+
+    return Room.fromJson(mutableMap);
+  }
+
   Future<void> insertRoom(Room room) async {
     final db = await database;
+    final data = {
+      'id': room.id,
+      'name': room.name,
+      'description': room.description,
+      'device_ids': jsonEncode(room.deviceIds),
+      'created_at': room.createdAt.toIso8601String(),
+      'updated_at': room.lastUpdated.toIso8601String(),
+    };
+
     await db.insert(
       'rooms',
-      room.toJson(),
+      data,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
   Future<void> updateRoom(Room room) async {
     final db = await database;
+    final data = {
+      'id': room.id,
+      'name': room.name,
+      'description': room.description,
+      'device_ids': jsonEncode(room.deviceIds),
+      'created_at': room.createdAt.toIso8601String(),
+      'updated_at': room.lastUpdated.toIso8601String(),
+    };
+
     await db.update(
       'rooms',
-      room.toJson(),
+      data,
       where: 'id = ?',
       whereArgs: [room.id],
     );
@@ -381,7 +662,9 @@ class DatabaseService {
   Future<List<Device>> getAllDevices() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('devices');
-    return maps.map((map) => Device.fromJson(map)).toList();
+    return maps.map((map) {
+      return _deserializeDevice(map);
+    }).toList();
   }
 
   Future<List<Device>> getDevicesByRoom(String roomId) async {
@@ -391,7 +674,9 @@ class DatabaseService {
       where: 'room_id = ?',
       whereArgs: [roomId],
     );
-    return maps.map((map) => Device.fromJson(map)).toList();
+    return maps.map((map) {
+      return _deserializeDevice(map);
+    }).toList();
   }
 
   Future<Device?> getDevice(String id) async {
@@ -402,16 +687,63 @@ class DatabaseService {
       whereArgs: [id],
     );
     if (maps.isNotEmpty) {
-      return Device.fromJson(maps.first);
+      return _deserializeDevice(maps.first);
     }
     return null;
+  }
+
+  Device _deserializeDevice(Map<String, dynamic> map) {
+    final mutableMap = Map<String, dynamic>.from(map);
+
+    // Convert snake_case to camelCase
+    if (mutableMap.containsKey('room_id')) {
+      mutableMap['roomId'] = mutableMap.remove('room_id');
+    }
+
+    if (mutableMap.containsKey('last_updated')) {
+      mutableMap['lastUpdated'] = mutableMap.remove('last_updated');
+    }
+
+    if (mutableMap.containsKey('mqtt_topic')) {
+      mutableMap['mqttTopic'] = mutableMap.remove('mqtt_topic');
+    }
+
+    // Handle is_on as boolean
+    if (mutableMap.containsKey('is_on') && mutableMap['is_on'] is int) {
+      mutableMap['isOn'] = mutableMap.remove('is_on') == 1;
+    } else if (mutableMap.containsKey('is_on')) {
+      mutableMap['isOn'] = mutableMap.remove('is_on');
+    }
+
+    // Parse properties if it's a JSON string
+    if (mutableMap['properties'] is String) {
+      try {
+        mutableMap['properties'] =
+            jsonDecode(mutableMap['properties'] as String);
+      } catch (e) {
+        mutableMap['properties'] = {};
+      }
+    }
+
+    return Device.fromJson(mutableMap);
   }
 
   Future<void> insertDevice(Device device) async {
     final db = await database;
     await db.insert(
       'devices',
-      device.toJson(),
+      {
+        'id': device.id,
+        'name': device.name,
+        'room_id': device.roomId,
+        'type': device.type.toString().split('.').last,
+        'status': device.status.toString().split('.').last,
+        'is_on': device.isOn ? 1 : 0,
+        'properties':
+            device.properties != null ? jsonEncode(device.properties) : null,
+        'last_updated': device.lastUpdated.toIso8601String(),
+        'mqtt_topic': device.mqttTopic,
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -420,7 +752,18 @@ class DatabaseService {
     final db = await database;
     await db.update(
       'devices',
-      device.toJson(),
+      {
+        'id': device.id,
+        'name': device.name,
+        'room_id': device.roomId,
+        'type': device.type.toString().split('.').last,
+        'status': device.status.toString().split('.').last,
+        'is_on': device.isOn ? 1 : 0,
+        'properties':
+            device.properties != null ? jsonEncode(device.properties) : null,
+        'last_updated': device.lastUpdated.toIso8601String(),
+        'mqtt_topic': device.mqttTopic,
+      },
       where: 'id = ?',
       whereArgs: [device.id],
     );
@@ -439,7 +782,9 @@ class DatabaseService {
   Future<List<AutomationRule>> getAllAutomationRules() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('automation_rules');
-    return maps.map((map) => AutomationRule.fromJson(map)).toList();
+    return maps.map((map) {
+      return _deserializeAutomationRule(map);
+    }).toList();
   }
 
   Future<AutomationRule?> getAutomationRule(String id) async {
@@ -450,16 +795,75 @@ class DatabaseService {
       whereArgs: [id],
     );
     if (maps.isNotEmpty) {
-      return AutomationRule.fromJson(maps.first);
+      return _deserializeAutomationRule(maps.first);
     }
     return null;
+  }
+
+  AutomationRule _deserializeAutomationRule(Map<String, dynamic> map) {
+    final mutableMap = Map<String, dynamic>.from(map);
+
+    // Convert snake_case to camelCase
+    if (mutableMap.containsKey('created_at')) {
+      mutableMap['createdAt'] = mutableMap.remove('created_at');
+    }
+
+    if (mutableMap.containsKey('updated_at')) {
+      mutableMap['lastUpdated'] = mutableMap.remove('updated_at');
+    }
+
+    if (mutableMap.containsKey('last_triggered')) {
+      mutableMap['lastTriggered'] = mutableMap.remove('last_triggered');
+    }
+
+    // Handle is_enabled as boolean
+    if (mutableMap.containsKey('is_enabled') &&
+        mutableMap['is_enabled'] is int) {
+      mutableMap['isEnabled'] = mutableMap.remove('is_enabled') == 1;
+    } else if (mutableMap.containsKey('is_enabled')) {
+      mutableMap['isEnabled'] = mutableMap.remove('is_enabled');
+    }
+
+    // Parse conditions if it's a JSON string
+    if (mutableMap['conditions'] is String) {
+      try {
+        final List<dynamic> conditionsList =
+            jsonDecode(mutableMap['conditions'] as String);
+        mutableMap['conditions'] = conditionsList;
+      } catch (e) {
+        mutableMap['conditions'] = [];
+      }
+    }
+
+    // Parse actions if it's a JSON string
+    if (mutableMap['actions'] is String) {
+      try {
+        final List<dynamic> actionsList =
+            jsonDecode(mutableMap['actions'] as String);
+        mutableMap['actions'] = actionsList;
+      } catch (e) {
+        mutableMap['actions'] = [];
+      }
+    }
+
+    return AutomationRule.fromJson(mutableMap);
   }
 
   Future<void> insertAutomationRule(AutomationRule rule) async {
     final db = await database;
     await db.insert(
       'automation_rules',
-      rule.toJson(),
+      {
+        'id': rule.id,
+        'name': rule.name,
+        'description': rule.description,
+        'conditions': jsonEncode(rule.conditions),
+        'actions': jsonEncode(rule.actions),
+        'is_enabled': rule.isEnabled ? 1 : 0,
+        'created_at': rule.createdAt.toIso8601String(),
+        'updated_at': rule.lastUpdated.toIso8601String(),
+        'last_triggered': rule.lastTriggered?.toIso8601String(),
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -468,7 +872,17 @@ class DatabaseService {
     final db = await database;
     await db.update(
       'automation_rules',
-      rule.toJson(),
+      {
+        'id': rule.id,
+        'name': rule.name,
+        'description': rule.description,
+        'conditions': jsonEncode(rule.conditions),
+        'actions': jsonEncode(rule.actions),
+        'is_enabled': rule.isEnabled ? 1 : 0,
+        'created_at': rule.createdAt.toIso8601String(),
+        'updated_at': rule.lastUpdated.toIso8601String(),
+        'last_triggered': rule.lastTriggered?.toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [rule.id],
     );
@@ -521,7 +935,18 @@ class DatabaseService {
     final db = await database;
     await db.insert(
       'alerts',
-      alert.toJson(),
+      {
+        'id': alert.id,
+        'title': alert.title,
+        'message': alert.message,
+        'severity': alert.severity.toString().split('.').last,
+        'type': alert.type.toString().split('.').last,
+        'device_id': alert.deviceId,
+        'rule_id': alert.ruleId,
+        'timestamp': alert.timestamp.toIso8601String(),
+        'is_read': alert.isRead ? 1 : 0,
+        'is_acknowledged': alert.isAcknowledged ? 1 : 0,
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -530,7 +955,18 @@ class DatabaseService {
     final db = await database;
     await db.update(
       'alerts',
-      alert.toJson(),
+      {
+        'id': alert.id,
+        'title': alert.title,
+        'message': alert.message,
+        'severity': alert.severity.toString().split('.').last,
+        'type': alert.type.toString().split('.').last,
+        'device_id': alert.deviceId,
+        'rule_id': alert.ruleId,
+        'timestamp': alert.timestamp.toIso8601String(),
+        'is_read': alert.isRead ? 1 : 0,
+        'is_acknowledged': alert.isAcknowledged ? 1 : 0,
+      },
       where: 'id = ?',
       whereArgs: [alert.id],
     );
@@ -602,6 +1038,88 @@ class DatabaseService {
     );
   }
 
+  // User credentials operations
+  Future<void> setUserPassword(String userId, String passwordHash) async {
+    final db = await database;
+    final credentialId = DateTime.now().millisecondsSinceEpoch.toString() +
+        userId.substring(0, 4);
+
+    await db.insert(
+      'user_credentials',
+      {
+        'id': credentialId,
+        'user_id': userId,
+        'password_hash': passwordHash,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> getUserPasswordHash(String userId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'user_credentials',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
+
+    if (maps.isNotEmpty) {
+      return maps.first['password_hash'] as String;
+    }
+    return null;
+  }
+
+  Future<void> storePasswordResetToken(
+      String email, String tokenHash, Duration validityDuration) async {
+    final db = await database;
+    await db.insert(
+      'settings',
+      {
+        'key': 'reset_token_$email',
+        'value': tokenHash,
+        'updated_at': DateTime.now().add(validityDuration).toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> getPasswordResetToken(String email) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: ['reset_token_$email'],
+    );
+
+    if (maps.isNotEmpty) {
+      final updatedAt = maps.first['updated_at'] as String;
+      final expiryTime = DateTime.parse(updatedAt);
+
+      if (DateTime.now().isBefore(expiryTime)) {
+        return maps.first['value'] as String;
+      }
+
+      // Token expired, delete it
+      await db.delete(
+        'settings',
+        where: 'key = ?',
+        whereArgs: ['reset_token_$email'],
+      );
+    }
+    return null;
+  }
+
+  Future<void> deletePasswordResetToken(String email) async {
+    final db = await database;
+    await db.delete(
+      'settings',
+      where: 'key = ?',
+      whereArgs: ['reset_token_$email'],
+    );
+  }
+
   // Utility methods
   Future<void> clearAllData() async {
     final db = await database;
@@ -609,6 +1127,17 @@ class DatabaseService {
     await db.delete('automation_rules');
     await db.delete('devices');
     await db.delete('rooms');
+  }
+
+  Future<void> clearAllDataIncludingUsers() async {
+    final db = await database;
+    await db.delete('alerts');
+    await db.delete('automation_rules');
+    await db.delete('devices');
+    await db.delete('rooms');
+    await db.delete('auth_sessions');
+    await db.delete('users');
+    await db.delete('settings');
   }
 
   Future<void> close() async {

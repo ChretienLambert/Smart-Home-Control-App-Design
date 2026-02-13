@@ -13,7 +13,8 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   final _nameController = TextEditingController(text: 'User');
   final _emailController = TextEditingController(text: 'user@smarthome.com');
   final _phoneController = TextEditingController(text: '+1 234 567 8900');
-  final _addressController = TextEditingController(text: '123 Home Street, City');
+  final _addressController =
+      TextEditingController(text: '123 Home Street, City');
 
   @override
   void dispose() {
@@ -245,10 +246,10 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               Card(
                 child: Column(
                   children: [
-                    ListTile(
-                      leading: const Icon(Icons.calendar_today),
-                      title: const Text('Member Since'),
-                      subtitle: const Text('January 15, 2024'),
+                    const ListTile(
+                      leading: Icon(Icons.calendar_today),
+                      title: Text('Member Since'),
+                      subtitle: Text('January 15, 2024'),
                     ),
                     const Divider(height: 1),
                     ListTile(
@@ -256,7 +257,8 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                       title: const Text('Account Status'),
                       subtitle: const Text('Verified'),
                       trailing: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E7F5C).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),

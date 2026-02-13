@@ -210,7 +210,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                         _camerasActive = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -228,7 +228,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                         _motionDetection = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -245,7 +245,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                         _doorSensors = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -263,7 +263,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                         _windowSensors = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                 ],
               ),

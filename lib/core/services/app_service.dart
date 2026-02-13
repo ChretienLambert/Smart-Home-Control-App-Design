@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/device.dart';
 import '../models/room.dart';
 import '../models/automation_rule.dart';
@@ -170,7 +168,7 @@ class AppService {
         name: 'Night Light Automation',
         description: 'Turn on lights when motion is detected at night',
         conditions: [
-          AutomationCondition(
+          const AutomationCondition(
             deviceId: 'sim_motion_1',
             type: ConditionType.sensorValue,
             value: true,
@@ -179,7 +177,7 @@ class AppService {
           ),
         ],
         actions: [
-          AutomationAction(
+          const AutomationAction(
             deviceId: 'sim_light_1',
             type: ActionType.turnOn,
             value: true,
@@ -194,7 +192,7 @@ class AppService {
         name: 'Temperature Control',
         description: 'Turn on AC when temperature exceeds 26°C',
         conditions: [
-          AutomationCondition(
+          const AutomationCondition(
             deviceId: 'sim_temp_1',
             type: ConditionType.sensorValue,
             value: 26.0,
@@ -203,7 +201,7 @@ class AppService {
           ),
         ],
         actions: [
-          AutomationAction(
+          const AutomationAction(
             deviceId: 'sim_ac_1',
             type: ActionType.turnOn,
             value: true,

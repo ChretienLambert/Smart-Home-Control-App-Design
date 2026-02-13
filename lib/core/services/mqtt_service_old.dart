@@ -11,8 +11,8 @@ class MQTTService {
 
   MqttServerClient? _client;
   bool _isConnected = false;
-  final StreamController<MqttMessage> _messageController =
-      StreamController<MqttMessage>.broadcast();
+  final StreamController<MqttMessageWrapper> _messageController =
+      StreamController<MqttMessageWrapper>.broadcast();
   final StreamController<bool> _connectionController =
       StreamController<bool>.broadcast();
 
@@ -21,10 +21,10 @@ class MQTTService {
   int _port = 1883;
   String _username = '';
   String _password = '';
-  String _clientId = 'smart_home_app';
+  final String _clientId = 'smart_home_app';
 
   // Stream getters
-  Stream<MqttMessage> get messages => _messageController.stream;
+  Stream<MqttMessageWrapper> get messages => _messageController.stream;
   Stream<bool> get connectionStatus => _connectionController.stream;
   bool get isConnected => _isConnected;
 
@@ -64,7 +64,6 @@ class MQTTService {
           .withWillTopic('willtopic')
           .withWillMessage('Will message')
           .withWillQos(MqttQos.atLeastOnce)
-          .withWillRetain(false)
           .startClean();
 
       _client!.connectionMessage = connMessage;
@@ -137,16 +136,16 @@ class MQTTService {
       _client!.subscribe(topic, qos);
 
       // Listen for messages on this topic
-      _client!.updates
-          ?.listen((List<MqttReceivedMessage<MqttMessage>> messages) {
-        final MqttReceivedMessage<MqttMessage> recMess = messages[0];
-        final MqttMessage message = recMess.payload;
+      _client!.updates?.listen((messages) {
+        final recMess = messages[0];
+        final message = recMess.payload;
 
         if (message is MqttPublishMessage) {
           final String topic = recMess.topic;
-          final payload = String.fromCharCodes(message.payload);
+          final payload =
+              MqttPublishPayload.bytesToStringAsString(message.payload.message);
 
-          _messageController.add(MqttMessage(topic, payload));
+          _messageController.add(MqttMessageWrapper(topic, payload));
         }
       });
     }
@@ -185,7 +184,7 @@ class MQTTService {
 
   // Automation control
   void triggerAutomation(String ruleId) {
-    final topic = 'smarthome/automation/trigger';
+    const topic = 'smarthome/automation/trigger';
     final message = json.encode({
       'ruleId': ruleId,
       'timestamp': DateTime.now().toIso8601String(),
@@ -201,7 +200,7 @@ class MQTTService {
 
   // Alert methods
   void sendAlert(Alert alert) {
-    final topic = 'smarthome/alerts';
+    const topic = 'smarthome/alerts';
     final message = json.encode(alert.toJson());
     publish(topic, message);
   }
@@ -213,11 +212,11 @@ class MQTTService {
   }
 }
 
-class MqttMessage {
+class MqttMessageWrapper {
   final String topic;
   final String payload;
 
-  MqttMessage(this.topic, this.payload);
+  MqttMessageWrapper(this.topic, this.payload);
 
   Map<String, dynamic> get data {
     try {

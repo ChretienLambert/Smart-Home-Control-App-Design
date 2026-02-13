@@ -3,8 +3,8 @@ import 'dart:math';
 import '../models/user.dart';
 import '../models/auth_session.dart';
 import '../services/database_service.dart';
-import '../services/auth_service.dart';
 import '../services/logger_service.dart';
+import '../utils/password_utils.dart';
 
 class DatabaseSeeder {
   static final DatabaseSeeder _instance = DatabaseSeeder._internal();
@@ -12,7 +12,6 @@ class DatabaseSeeder {
   DatabaseSeeder._internal();
 
   final DatabaseService _db = DatabaseService();
-  final AuthService _auth = AuthService();
   final LoggerService _logger = LoggerService();
 
   Future<void> seedDatabase() async {
@@ -104,6 +103,12 @@ class DatabaseSeeder {
         );
 
         await _db.insertUser(user);
+
+        // Hash and store password
+        final passwordHash =
+            PasswordUtils.hashPassword(userData['password'] as String);
+        await _db.setUserPassword(user.id, passwordHash);
+
         print('👤 Created user: ${user.username} (${user.email})');
 
         // Create a session for the user (in a real app, this would be done during login)
@@ -127,16 +132,17 @@ class DatabaseSeeder {
     }
 
     print('🎉 Created ${dummyUsers.length} dummy users successfully');
-    print('\n📋 Login Credentials:');
+    print('\n📋 Default Test Credentials (for testing only):');
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     for (final userData in dummyUsers) {
       print('👤 ${userData['username']}');
       print('   📧 ${userData['email']}');
-      print('   🔑 ${userData['password']}');
       print('   🎭 ${userData['role']}');
       print('');
     }
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    print(
+        '⚠️  Passwords are stored securely and not displayed. Use provided test credentials for login.');
   }
 
   Future<void> createSampleRooms() async {
@@ -256,16 +262,5 @@ class DatabaseSeeder {
   Future<bool> userExists(String username) async {
     final user = await _db.getUserByUsername(username);
     return user != null;
-  }
-
-  // Utility method to get user by credentials (for testing)
-  Future<User?> getUserByCredentials(String username, String password) async {
-    final user = await _db.getUserByUsername(username);
-    if (user != null && user.status == UserStatus.active) {
-      // In a real app, you would verify the password hash
-      // For demo purposes, we'll accept the password if user exists
-      return user;
-    }
-    return null;
   }
 }

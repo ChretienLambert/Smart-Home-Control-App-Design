@@ -142,7 +142,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                         _dataCollection = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -158,7 +158,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                         _analytics = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -176,7 +176,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                         _crashReporting = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                 ],
               ),
@@ -220,7 +220,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                         _locationServices = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -238,7 +238,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                         _voiceCommands = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -255,7 +255,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                         _cameraAccess = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -273,7 +273,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                         _microphoneAccess = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                 ],
               ),

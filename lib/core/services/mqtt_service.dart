@@ -180,7 +180,7 @@ class MQTTService {
 
   // Automation control
   void triggerAutomation(String ruleId) {
-    final topic = 'smarthome/automation/trigger';
+    const topic = 'smarthome/automation/trigger';
     final message = json.encode({
       'ruleId': ruleId,
       'timestamp': DateTime.now().toIso8601String(),
@@ -196,7 +196,7 @@ class MQTTService {
 
   // Alert methods
   void sendAlert(Alert alert) {
-    final topic = 'smarthome/alerts';
+    const topic = 'smarthome/alerts';
     final message = json.encode(alert.toJson());
     publish(topic, message);
   }

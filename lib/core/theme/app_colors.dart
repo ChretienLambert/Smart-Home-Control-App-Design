@@ -16,12 +16,12 @@ class AppColors {
   static const Color background = Color(0xFFF5F7FA);
   static const Color surface = Color(0xFFFFFFFF);
   static const Color cardBackground = Color(0xFFFFFFFF);
-  
+
   // Text Colors
   static const Color textPrimary = Color(0xFF212121);
   static const Color textSecondary = Color(0xFF757575);
   static const Color textOnPrimary = Color(0xFFFFFFFF);
-  
+
   // Status Colors
   static const Color success = Color(0xFF4CAF50);
   static const Color warning = Color(0xFFFF9800);
@@ -62,9 +62,9 @@ extension ColorExtension on Color {
   Color withOpacity(double opacity) {
     return Color.fromARGB(
       (255 * opacity).round(),
-      red,
-      green,
-      blue,
+      r.toInt(),
+      g.toInt(),
+      b.toInt(),
     );
   }
 }

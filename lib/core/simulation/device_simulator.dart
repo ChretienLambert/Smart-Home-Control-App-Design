@@ -19,7 +19,7 @@ class DeviceSimulator {
 
   Future<void> start() async {
     if (_isRunning) return;
-    
+
     _isRunning = true;
     await _createSimulatedDevices();
     _startSimulation();
@@ -27,7 +27,7 @@ class DeviceSimulator {
 
   Future<void> stop() async {
     if (!_isRunning) return;
-    
+
     _isRunning = false;
     _simulationTimer?.cancel();
     _simulationTimer = null;
@@ -36,7 +36,7 @@ class DeviceSimulator {
 
   Future<void> _createSimulatedDevices() async {
     _simulatedDevices.clear();
-    
+
     // Create simulated devices for testing
     _simulatedDevices.addAll([
       SimulatedDevice(
@@ -133,16 +133,17 @@ class DeviceSimulator {
   void _updateTemperatureSensor(SimulatedDevice device) {
     // Simulate temperature fluctuations
     final currentTemp = device.properties['temperature'] as double;
-    final newTemp = currentTemp + (Random().nextDouble() - 0.5) * 2.0; // ±1 degree
+    final newTemp =
+        currentTemp + (Random().nextDouble() - 0.5) * 2.0; // ±1 degree
     final clampedTemp = newTemp.clamp(18.0, 30.0);
-    
+
     device.properties['temperature'] = clampedTemp.roundToDouble();
-    
+
     // Simulate humidity changes
     final currentHumidity = device.properties['humidity'] as int;
     final newHumidity = currentHumidity + (Random().nextInt(5) - 2); // ±2%
     device.properties['humidity'] = newHumidity.clamp(30, 80);
-    
+
     _sendSensorData(device);
   }
 
@@ -150,13 +151,13 @@ class DeviceSimulator {
     // Simulate random motion detection (10% chance)
     final motionDetected = Random().nextDouble() < 0.1;
     device.properties['motion'] = motionDetected;
-    
+
     if (motionDetected) {
       device.properties['lastMotion'] = DateTime.now().toIso8601String();
     }
-    
+
     _sendSensorData(device);
-    
+
     // Send alert if motion detected and it's nighttime
     if (motionDetected && _isNightTime()) {
       _sendMotionAlert(device);
@@ -167,9 +168,9 @@ class DeviceSimulator {
     // Simulate very rare smoke detection (0.5% chance)
     final smokeDetected = Random().nextDouble() < 0.005;
     device.properties['smokeDetected'] = smokeDetected;
-    
+
     _sendSensorData(device);
-    
+
     if (smokeDetected) {
       _sendSmokeAlert(device);
     }
@@ -180,15 +181,15 @@ class DeviceSimulator {
     final currentBattery = device.properties['battery'] as int;
     final newBattery = max(0, currentBattery - Random().nextInt(2));
     device.properties['battery'] = newBattery;
-    
+
     // Send low battery alert
     if (newBattery < 20 && newBattery % 5 == 0) {
       _sendLowBatteryAlert(device);
     }
-    
+
     // Occasionally simulate lock/unlock (5% chance)
     if (Random().nextDouble() < 0.05) {
-      device.properties['locked'] = !device.properties['locked'] as bool;
+      device.properties['locked'] = !device.properties['locked'];
       _sendDeviceStatus(device);
     }
   }
@@ -200,7 +201,7 @@ class DeviceSimulator {
       final targetTemp = currentTemp + (Random().nextInt(3) - 1); // ±1 degree
       device.properties['temperature'] = targetTemp.clamp(18, 26);
     }
-    
+
     _sendDeviceStatus(device);
   }
 
@@ -208,10 +209,11 @@ class DeviceSimulator {
     if (device.isOn) {
       // Simulate brightness changes
       final currentBrightness = device.properties['brightness'] as int;
-      final newBrightness = currentBrightness + (Random().nextInt(11) - 5); // ±5%
+      final newBrightness =
+          currentBrightness + (Random().nextInt(11) - 5); // ±5%
       device.properties['brightness'] = newBrightness.clamp(10, 100);
     }
-    
+
     _sendDeviceStatus(device);
   }
 
@@ -225,7 +227,7 @@ class DeviceSimulator {
       'isOn': device.isOn,
       'lastUpdated': DateTime.now().toIso8601String(),
     });
-    
+
     _mqtt.publish(topic, message);
   }
 
@@ -236,7 +238,7 @@ class DeviceSimulator {
       'properties': device.properties,
       'timestamp': DateTime.now().toIso8601String(),
     });
-    
+
     _mqtt.publish(topic, message);
   }
 
@@ -252,8 +254,8 @@ class DeviceSimulator {
       isRead: false,
       isAcknowledged: false,
     );
-    
-    final topic = 'smarthome/alerts';
+
+    const topic = 'smarthome/alerts';
     final message = json.encode(alert.toJson());
     _mqtt.publish(topic, message);
   }
@@ -270,8 +272,8 @@ class DeviceSimulator {
       isRead: false,
       isAcknowledged: false,
     );
-    
-    final topic = 'smarthome/alerts';
+
+    const topic = 'smarthome/alerts';
     final message = json.encode(alert.toJson());
     _mqtt.publish(topic, message);
   }
@@ -280,7 +282,8 @@ class DeviceSimulator {
     final alert = Alert(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: 'Low Battery',
-      message: '${device.name} battery is low: ${device.properties['battery']}%',
+      message:
+          '${device.name} battery is low: ${device.properties['battery']}%',
       severity: AlertSeverity.warning,
       type: AlertType.lowBattery,
       deviceId: device.id,
@@ -288,8 +291,8 @@ class DeviceSimulator {
       isRead: false,
       isAcknowledged: false,
     );
-    
-    final topic = 'smarthome/alerts';
+
+    const topic = 'smarthome/alerts';
     final message = json.encode(alert.toJson());
     _mqtt.publish(topic, message);
   }
@@ -309,8 +312,8 @@ class DeviceSimulator {
   void setDeviceProperty(String deviceId, String property, dynamic value) {
     final device = _simulatedDevices.firstWhere((d) => d.id == deviceId);
     device.properties[property] = value;
-    
-    if (device.type == DeviceType.temperatureSensor || 
+
+    if (device.type == DeviceType.temperatureSensor ||
         device.type == DeviceType.motionSensor ||
         device.type == DeviceType.smokeDetector) {
       _sendSensorData(device);
@@ -319,7 +322,8 @@ class DeviceSimulator {
     }
   }
 
-  List<SimulatedDevice> get simulatedDevices => List.unmodifiable(_simulatedDevices);
+  List<SimulatedDevice> get simulatedDevices =>
+      List.unmodifiable(_simulatedDevices);
 }
 
 class SimulatedDevice {

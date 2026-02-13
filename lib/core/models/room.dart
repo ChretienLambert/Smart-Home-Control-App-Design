@@ -1,5 +1,4 @@
 import 'package:json_annotation/json_annotation.dart';
-import 'device.dart';
 
 part 'room.g.dart';
 
@@ -45,9 +44,7 @@ class Room {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is Room &&
-          runtimeType == other.runtimeType &&
-          id == other.id;
+      other is Room && runtimeType == other.runtimeType && id == other.id;
 
   @override
   int get hashCode => id.hashCode;

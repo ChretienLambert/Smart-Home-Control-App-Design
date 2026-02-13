@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import '../providers/theme_provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/mobile_app_bar.dart';
 import '../widgets/device_card.dart';
@@ -17,7 +16,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  bool _isOnline = true;
+  final bool _isOnline = true;
 
   final List<Map<String, dynamic>> _devices = [
     {
@@ -108,9 +107,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             // Header
             Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: AppColors.primaryGradient,
-                borderRadius: const BorderRadius.only(
+                borderRadius: BorderRadius.only(
                   bottomLeft: Radius.circular(24),
                   bottomRight: Radius.circular(24),
                 ),
@@ -392,11 +391,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Show a snackbar to indicate the event was triggered
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
+        content: const Row(
           children: [
-            const Icon(Icons.warning, color: Colors.white),
-            const SizedBox(width: 8),
-            const Text('⚠️ Bad Door Event Triggered (Testing)'),
+            Icon(Icons.warning, color: Colors.white),
+            SizedBox(width: 8),
+            Text('⚠️ Bad Door Event Triggered (Testing)'),
           ],
         ),
         backgroundColor: Colors.red,

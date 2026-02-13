@@ -2,11 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../widgets/mobile_app_bar.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/services/auth_service.dart';
-import '../../core/services/database_seeder.dart';
-import '../../core/models/auth_session.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -37,41 +33,40 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final authService = AuthService();
-      final seeder = DatabaseSeeder();
+      // Use AuthProvider to perform login (ensures app state is updated once)
+      await context
+          .read<AuthProvider>()
+          .login(_emailController.text, _passwordController.text);
 
-      // Check if user exists in database
-      final user = await seeder.getUserByCredentials(
-        _emailController.text,
-        _passwordController.text,
-      );
-
-      if (user == null) {
-        throw Exception(
-            'Invalid credentials. Please check your username and password.');
-      }
-
-      // Create login request
-      final loginRequest = LoginRequest(
-        username: user.username,
-        password: _passwordController.text,
-        rememberMe: true,
-      );
-
-      // Perform login
-      final authResponse = await authService.login(loginRequest);
-
-      // Update AuthProvider
-      await context.read<AuthProvider>().login(user.username);
+      final user = context.read<AuthProvider>().currentUser;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Welcome back, ${user.displayName}!'),
+            content: Text(
+                'Welcome back, ${user?.displayName ?? _emailController.text}!'),
             backgroundColor: AppColors.cyanoBlue,
           ),
         );
-        context.go('/dashboard');
+
+        try {
+          // Use GoRouter API and guard with mounted; catch any navigation errors
+          GoRouter.of(context).go('/dashboard');
+        } catch (navError, stack) {
+          // Log navigation error and fallback to Navigator
+          // Avoid importing logger service here; print for visibility
+          // If GoRouter fails, try Navigator
+          // ignore: avoid_print
+          print('Navigation error to /dashboard: $navError\n$stack');
+          if (mounted) {
+            try {
+              Navigator.of(context).pushReplacementNamed('/dashboard');
+            } catch (e) {
+              // ignore: avoid_print
+              print('Fallback navigation also failed: $e');
+            }
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -149,14 +144,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 key: _formKey,
                 child: Column(
                   children: [
-                    // Email field
+                    // Email/Username field
                     TextFormField(
                       controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
+                      keyboardType: TextInputType.text,
                       decoration: InputDecoration(
-                        labelText: 'Email',
-                        hintText: 'Enter your email',
-                        prefixIcon: const Icon(Icons.email),
+                        labelText: 'Email or Username',
+                        hintText: 'Enter your email or username',
+                        prefixIcon: const Icon(Icons.person),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -168,10 +163,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        if (!value.contains('@')) {
-                          return 'Please enter a valid email';
+                          return 'Please enter your email or username';
                         }
                         return null;
                       },
@@ -211,9 +203,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your password';
-                        }
-                        if (value.length < 6) {
-                          return 'Password must be at least 6 characters';
                         }
                         return null;
                       },
@@ -266,7 +255,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 16),
 
                     // Sign up link
                     Center(
@@ -280,7 +269,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           TextButton(
-                            onPressed: () => context.go('/register'),
+                            onPressed: () => context.push('/register'),
                             child: const Text(
                               'Sign Up',
                               style: TextStyle(

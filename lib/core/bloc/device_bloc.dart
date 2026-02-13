@@ -3,7 +3,6 @@ import 'package:equatable/equatable.dart';
 import '../models/device.dart';
 import '../services/database_service.dart';
 import '../services/mqtt_service.dart';
-import '../services/automation_engine.dart';
 
 // Events
 abstract class DeviceEvent extends Equatable {
@@ -95,7 +94,6 @@ class DeviceError extends DeviceState {
 class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
   final DatabaseService _db = DatabaseService();
   final MQTTService _mqtt = MQTTService();
-  final AutomationEngine _automation = AutomationEngine();
 
   DeviceBloc() : super(DeviceInitial()) {
     on<LoadDevices>(_onLoadDevices);
@@ -109,7 +107,8 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
     _mqtt.messages.listen(_handleMqttMessage);
   }
 
-  Future<void> _onLoadDevices(LoadDevices event, Emitter<DeviceState> emit) async {
+  Future<void> _onLoadDevices(
+      LoadDevices event, Emitter<DeviceState> emit) async {
     emit(DeviceLoading());
     try {
       final devices = await _db.getAllDevices();
@@ -119,11 +118,12 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
     }
   }
 
-  Future<void> _onToggleDevice(ToggleDevice event, Emitter<DeviceState> emit) async {
+  Future<void> _onToggleDevice(
+      ToggleDevice event, Emitter<DeviceState> emit) async {
     try {
       // Send MQTT command
       _mqtt.toggleDevice(event.deviceId, event.isOn);
-      
+
       // Update local state immediately for responsive UI
       if (state is DeviceLoaded) {
         final currentDevices = (state as DeviceLoaded).devices;
@@ -136,9 +136,9 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
           }
           return device;
         }).toList();
-        
+
         emit(DeviceLoaded(updatedDevices));
-        
+
         // Update database
         final device = currentDevices.firstWhere((d) => d.id == event.deviceId);
         final updatedDevice = device.copyWith(
@@ -152,10 +152,11 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
     }
   }
 
-  Future<void> _onUpdateDevice(UpdateDevice event, Emitter<DeviceState> emit) async {
+  Future<void> _onUpdateDevice(
+      UpdateDevice event, Emitter<DeviceState> emit) async {
     try {
       await _db.updateDevice(event.device);
-      
+
       if (state is DeviceLoaded) {
         final currentDevices = (state as DeviceLoaded).devices;
         final updatedDevices = currentDevices.map((device) {
@@ -171,7 +172,7 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
   Future<void> _onAddDevice(AddDevice event, Emitter<DeviceState> emit) async {
     try {
       await _db.insertDevice(event.device);
-      
+
       if (state is DeviceLoaded) {
         final currentDevices = (state as DeviceLoaded).devices;
         final updatedDevices = [...currentDevices, event.device];
@@ -182,13 +183,16 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
     }
   }
 
-  Future<void> _onDeleteDevice(DeleteDevice event, Emitter<DeviceState> emit) async {
+  Future<void> _onDeleteDevice(
+      DeleteDevice event, Emitter<DeviceState> emit) async {
     try {
       await _db.deleteDevice(event.deviceId);
-      
+
       if (state is DeviceLoaded) {
         final currentDevices = (state as DeviceLoaded).devices;
-        final updatedDevices = currentDevices.where((device) => device.id != event.deviceId).toList();
+        final updatedDevices = currentDevices
+            .where((device) => device.id != event.deviceId)
+            .toList();
         emit(DeviceLoaded(updatedDevices));
       }
     } catch (e) {
@@ -196,11 +200,12 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
     }
   }
 
-  Future<void> _onDeviceUpdatedFromMQTT(DeviceUpdatedFromMQTT event, Emitter<DeviceState> emit) async {
+  Future<void> _onDeviceUpdatedFromMQTT(
+      DeviceUpdatedFromMQTT event, Emitter<DeviceState> emit) async {
     try {
       // Update database
       await _db.updateDevice(event.device);
-      
+
       // Update state if devices are loaded
       if (state is DeviceLoaded) {
         final currentDevices = (state as DeviceLoaded).devices;

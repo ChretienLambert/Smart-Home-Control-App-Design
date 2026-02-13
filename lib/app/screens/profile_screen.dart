@@ -167,7 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _notificationsEnabled = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -183,7 +183,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _darkMode = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
@@ -200,7 +200,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _autoBackup = value;
                       });
                     },
-                    activeColor: const Color(0xFF1E7F5C),
+                    activeThumbColor: const Color(0xFF1E7F5C),
                   ),
                 ],
               ),

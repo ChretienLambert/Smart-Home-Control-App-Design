@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/mobile_app_bar.dart';
-import '../../core/theme/app_colors.dart';
 
 class CreateAutomationScreen extends StatefulWidget {
   const CreateAutomationScreen({super.key});
@@ -177,7 +176,7 @@ class _CreateAutomationScreenState extends State<CreateAutomationScreen> {
 
               // Trigger type
               DropdownButtonFormField<String>(
-                value: _selectedTrigger,
+                initialValue: _selectedTrigger,
                 decoration: InputDecoration(
                   labelText: 'When should this run?',
                   prefixIcon: const Icon(Icons.sensors),

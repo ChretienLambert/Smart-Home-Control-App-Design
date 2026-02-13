@@ -141,15 +141,15 @@ class _EnergyScreenState extends State<EnergyScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  const Row(
                     children: [
                       Icon(
                         Icons.bolt,
                         color: Colors.white,
                         size: 24,
                       ),
-                      const SizedBox(width: 12),
-                      const Text(
+                      SizedBox(width: 12),
+                      Text(
                         'Current Usage',
                         style: TextStyle(
                           color: Colors.white,
@@ -170,7 +170,7 @@ class _EnergyScreenState extends State<EnergyScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '$_selectedPeriod',
+                    _selectedPeriod,
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.8),
                       fontSize: 16,
@@ -179,9 +179,9 @@ class _EnergyScreenState extends State<EnergyScreen> {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.trending_down,
-                        color: const Color(0xFFFFC857),
+                        color: Color(0xFFFFC857),
                         size: 20,
                       ),
                       const SizedBox(width: 8),
@@ -295,9 +295,9 @@ class _EnergyScreenState extends State<EnergyScreen> {
             ),
             const SizedBox(height: 16),
 
-            Card(
+            const Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -305,11 +305,11 @@ class _EnergyScreenState extends State<EnergyScreen> {
                       children: [
                         Icon(
                           Icons.lightbulb_outline,
-                          color: const Color(0xFFFFC857),
+                          color: Color(0xFFFFC857),
                           size: 24,
                         ),
-                        const SizedBox(width: 12),
-                        const Text(
+                        SizedBox(width: 12),
+                        Text(
                           'Tip of the Day',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
@@ -318,8 +318,8 @@ class _EnergyScreenState extends State<EnergyScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
+                    SizedBox(height: 12),
+                    Text(
                       'Turn off lights when leaving a room. This simple habit can save up to 10% on your energy bill.',
                       style: TextStyle(
                         color: Colors.grey,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 class DeviceCard extends StatefulWidget {
   final String id;
   final String name;
+  final String description;
   final IconData icon;
   final String status;
   final bool isOn;
@@ -13,6 +14,7 @@ class DeviceCard extends StatefulWidget {
     super.key,
     required this.id,
     required this.name,
+    this.description = '',
     required this.icon,
     required this.status,
     required this.isOn,
@@ -137,7 +139,7 @@ class _DeviceCardState extends State<DeviceCard>
                         onChanged: (value) {
                           widget.onToggle(widget.id);
                         },
-                        activeColor: const Color(0xFF1E7F5C),
+                        activeThumbColor: const Color(0xFF1E7F5C),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ],
@@ -156,7 +158,22 @@ class _DeviceCardState extends State<DeviceCard>
                     overflow: TextOverflow.ellipsis,
                   ),
 
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
+
+                  // Device description
+                  if (widget.description.isNotEmpty)
+                    Text(
+                      widget.description,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 10,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                  SizedBox(height: widget.description.isNotEmpty ? 6 : 4),
 
                   // Status indicator
                   Row(

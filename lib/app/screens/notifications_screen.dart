@@ -165,7 +165,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.notifications,
                     color: Colors.white,
                     size: 24,

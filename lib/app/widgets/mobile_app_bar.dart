@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 
 class MobileAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -39,7 +40,16 @@ class MobileAppBar extends StatelessWidget implements PreferredSizeWidget {
                     (isDark ? AppColors.textOnPrimary : AppColors.textPrimary),
                 size: 20,
               ),
-              onPressed: onBackPressed ?? () => Navigator.of(context).pop(),
+              onPressed: onBackPressed ??
+                  () {
+                    // Safe navigation back - check if we can pop
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    } else {
+                      // If we can't pop, navigate to dashboard as fallback
+                      context.go('/dashboard');
+                    }
+                  },
             )
           : null,
       title: Text(
@@ -116,7 +126,16 @@ class SliverMobileAppBar extends StatelessWidget {
                     (isDark ? AppColors.textOnPrimary : AppColors.textPrimary),
                 size: 20,
               ),
-              onPressed: onBackPressed ?? () => Navigator.of(context).pop(),
+              onPressed: onBackPressed ??
+                  () {
+                    // Safe navigation back - check if we can pop
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    } else {
+                      // If we can't pop, navigate to dashboard as fallback
+                      context.go('/dashboard');
+                    }
+                  },
             )
           : null,
       title: Text(

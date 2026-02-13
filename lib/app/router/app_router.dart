@@ -28,20 +28,33 @@ class AppRouter {
     redirect: (context, state) {
       final isLoggedIn = authProvider.isLoggedIn;
       final hasSeenOnboarding = authProvider.hasSeenOnboarding;
+      final current = state.uri.toString();
 
-      if (!isLoggedIn &&
-          !hasSeenOnboarding &&
-          state.uri.toString() != '/onboarding') {
+      // If not logged in, enforce onboarding/login routes
+      if (!isLoggedIn && !hasSeenOnboarding && current != '/onboarding') {
+        // ignore: avoid_print
+        print('Router redirect -> /onboarding (not logged & not seen onboarding)');
         return '/onboarding';
       }
 
-      if (!isLoggedIn &&
-          hasSeenOnboarding &&
-          state.uri.toString() != '/login' &&
-          state.uri.toString() != '/register' &&
-          state.uri.toString() != '/forgot-password' &&
-          state.uri.toString() != '/onboarding') {
-        return '/login';
+      if (!isLoggedIn && hasSeenOnboarding) {
+        // Allow access to auth pages only
+        const allowed = ['/login', '/register', '/forgot-password', '/onboarding'];
+        if (!allowed.contains(current)) {
+          // ignore: avoid_print
+          print('Router redirect -> /login (not logged & seen onboarding)');
+          return '/login';
+        }
+      }
+
+      // If logged in, prevent access to auth/onboarding pages — send to dashboard
+      if (isLoggedIn) {
+        const authPages = ['/login', '/register', '/forgot-password', '/onboarding', '/'];
+        if (authPages.contains(current)) {
+          // ignore: avoid_print
+          print('Router redirect -> /dashboard (already logged in)');
+          return '/dashboard';
+        }
       }
 
       return null;

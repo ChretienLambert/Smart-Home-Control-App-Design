@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/mobile_app_bar.dart';
-import '../../core/theme/app_colors.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -317,7 +316,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
                         TextButton(
-                          onPressed: () => context.go('/login'),
+                          onPressed: () {
+                            // Prefer popping if possible, otherwise navigate to login
+                            if (Navigator.of(context).canPop()) {
+                              context.pop();
+                            } else {
+                              context.go('/login');
+                            }
+                          },
                           child: const Text(
                             'Sign In',
                             style: TextStyle(
