@@ -66,7 +66,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
@@ -92,7 +92,7 @@ class _SplashScreenState extends State<SplashScreen> {
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
-                        Icons.wifi,
+                        Icons.bluetooth,
                         size: 16,
                         color: Colors.white,
                       ),
@@ -143,7 +143,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 child: CircularProgressIndicator(
                   strokeWidth: 4,
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    Colors.white.withOpacity(0.8),
+                    Colors.white.withValues(alpha: 0.8),
                   ),
                 ).animate().scale(
                     duration: 1500.ms,

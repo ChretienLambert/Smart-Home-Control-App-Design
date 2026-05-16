@@ -18,11 +18,27 @@ class AuthProvider extends ChangeNotifier {
   bool get hasSeenOnboarding => _hasSeenOnboarding;
   String get userName => _userName;
   User? get currentUser => _currentUser;
+  bool get isAdmin => _currentUser?.role == UserRole.admin;
+  String get homeId =>
+      isAdmin ? '' : _currentUser?.preferences?['homeId'] as String? ?? '';
+  String get homeName =>
+      isAdmin
+          ? 'Admin Control Panel'
+          : _currentUser?.preferences?['homeName'] as String? ?? 'Smart Home';
 
   Future<void> initialize() async {
     await _loadAuthState();
-    // Validate current session
-    await _authService.validateSession();
+
+    final sessionToken = _prefs?.getString('sessionToken');
+    if (sessionToken != null && sessionToken.isNotEmpty) {
+      final restored = await _authService.restoreSession(sessionToken);
+      if (!restored) {
+        await _prefs?.remove('sessionToken');
+      }
+    } else {
+      await _authService.validateSession();
+    }
+
     _currentUser = _authService.currentUser;
     _isLoggedIn = _authService.isAuthenticated;
     if (_currentUser != null) {
@@ -51,6 +67,7 @@ class AuthProvider extends ChangeNotifier {
 
       await _prefs?.setBool('isLoggedIn', true);
       await _prefs?.setString('userName', userName);
+      await _prefs?.setString('sessionToken', response.session.token);
       notifyListeners();
     } catch (e) {
       throw Exception('Login failed: $e');
@@ -67,6 +84,7 @@ class AuthProvider extends ChangeNotifier {
     await _prefs?.setBool('isLoggedIn', false);
     await _prefs?.setBool('hasSeenOnboarding', true);
     await _prefs?.remove('userName');
+    await _prefs?.remove('sessionToken');
     notifyListeners();
   }
 
@@ -96,10 +114,18 @@ class AuthProvider extends ChangeNotifier {
 
       await _prefs?.setBool('isLoggedIn', true);
       await _prefs?.setString('userName', userName);
+      await _prefs?.setString('sessionToken', response.session.token);
       notifyListeners();
     } catch (e) {
       throw Exception('Registration failed: $e');
     }
+  }
+
+  void syncCurrentUser(User user) {
+    _authService.syncCurrentUser(user);
+    _currentUser = user;
+    _userName = user.username;
+    notifyListeners();
   }
 
   Future<void> forgotPassword(String email) async {

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/theme/app_colors.dart';
+import 'app_navigation.dart';
+
 class BottomNav extends StatelessWidget {
   final int currentIndex;
 
@@ -11,40 +14,16 @@ class BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final navItems = [
-      {
-        'path': '/dashboard',
-        'icon': Icons.home,
-        'label': 'Home',
-      },
-      {
-        'path': '/devices',
-        'icon': Icons.devices,
-        'label': 'Devices',
-      },
-      {
-        'path': '/automation',
-        'icon': Icons.bolt,
-        'label': 'Automation',
-      },
-      {
-        'path': '/notifications',
-        'icon': Icons.notifications,
-        'label': 'Alerts',
-      },
-      {
-        'path': '/profile',
-        'icon': Icons.person,
-        'label': 'Profile',
-      },
-    ];
+    final destinations = navDestinationsFor(context);
+    final selectedIndex =
+        currentIndex.clamp(0, destinations.length - 1).toInt();
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -2),
           ),
@@ -54,36 +33,37 @@ class BottomNav extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(
-            children: navItems.asMap().entries.map((entry) {
+            children: destinations.asMap().entries.map((entry) {
               final index = entry.key;
               final item = entry.value;
-              final isActive = currentIndex == index;
+              final isActive = selectedIndex == index;
 
               return Expanded(
                 child: GestureDetector(
-                  onTap: () => context.go(item['path'] as String),
+                  onTap: () => context.go(item.path),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const SizedBox(height: 8),
                       Icon(
-                        item['icon'] as IconData,
+                        item.icon,
                         size: 24,
                         color: isActive
-                            ? const Color(0xFF1E7F5C)
-                            : Colors.grey[600],
+                            ? AppColors.cyanoBlue
+                            : AppColors.textSecondary,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        item['label'] as String,
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: isActive
-                              ? const Color(0xFF1E7F5C)
-                              : Colors.grey[600],
-                          fontWeight: isActive
-                              ? FontWeight.w600
-                              : FontWeight.normal,
+                              ? AppColors.cyanoBlue
+                              : AppColors.textSecondary,
+                          fontWeight:
+                              isActive ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
                     ],

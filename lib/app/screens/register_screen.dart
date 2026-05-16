@@ -123,7 +123,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               // Subtitle
               Text(
-                'Sign up to start controlling your smart home',
+                'Sign up to start controlling your smart home. Each new account gets its own home automatically.',
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.grey[600],
@@ -226,8 +226,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your password';
                         }
-                        if (value.length < 6) {
-                          return 'Password must be at least 6 characters';
+                        if (value.length < 8) {
+                          return 'Password must be at least 8 characters';
+                        }
+                        if (!RegExp(r'[A-Z]').hasMatch(value) ||
+                            !RegExp(r'[a-z]').hasMatch(value) ||
+                            !RegExp(r'[0-9]').hasMatch(value)) {
+                          return 'Use uppercase, lowercase, and a number';
                         }
                         return null;
                       },

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../models/alert.dart';
@@ -60,6 +63,15 @@ class DeleteAlert extends AlertEvent {
 
 class MarkAllAlertsAsRead extends AlertEvent {}
 
+class DeleteAllAlerts extends AlertEvent {
+  final String? homeId;
+
+  const DeleteAllAlerts({this.homeId});
+
+  @override
+  List<Object> get props => [homeId ?? ''];
+}
+
 class ClearOldAlerts extends AlertEvent {
   final int daysToKeep;
 
@@ -113,6 +125,7 @@ class AlertError extends AlertState {
 class AlertBloc extends Bloc<AlertEvent, AlertState> {
   final DatabaseService _db = DatabaseService();
   final MQTTService _mqtt = MQTTService();
+  StreamSubscription<MqttMessage>? _mqttSubscription;
 
   AlertBloc() : super(AlertInitial()) {
     on<LoadAlerts>(_onLoadAlerts);
@@ -121,11 +134,12 @@ class AlertBloc extends Bloc<AlertEvent, AlertState> {
     on<MarkAlertAsAcknowledged>(_onMarkAlertAsAcknowledged);
     on<DeleteAlert>(_onDeleteAlert);
     on<MarkAllAlertsAsRead>(_onMarkAllAlertsAsRead);
+    on<DeleteAllAlerts>(_onDeleteAllAlerts);
     on<ClearOldAlerts>(_onClearOldAlerts);
     on<AlertReceivedFromMQTT>(_onAlertReceivedFromMQTT);
 
     // Listen to MQTT messages for alerts
-    _mqtt.messages.listen(_handleMqttMessage);
+    _mqttSubscription = _mqtt.messages.listen(_handleMqttMessage);
   }
 
   Future<void> _onLoadAlerts(LoadAlerts event, Emitter<AlertState> emit) async {
@@ -238,6 +252,20 @@ class AlertBloc extends Bloc<AlertEvent, AlertState> {
     }
   }
 
+  Future<void> _onDeleteAllAlerts(
+      DeleteAllAlerts event, Emitter<AlertState> emit) async {
+    try {
+      final homeId = event.homeId;
+      if (homeId == null || homeId.isEmpty) {
+        return;
+      }
+      await _db.clearAlertsForHome(homeId);
+      add(const LoadAlerts());
+    } catch (e) {
+      emit(AlertError('Failed to delete all alerts: $e'));
+    }
+  }
+
   Future<void> _onClearOldAlerts(
       ClearOldAlerts event, Emitter<AlertState> emit) async {
     try {
@@ -264,7 +292,7 @@ class AlertBloc extends Bloc<AlertEvent, AlertState> {
       }
     } catch (e) {
       // Don't emit error state for MQTT alerts, just log it
-      print('Failed to save MQTT alert: $e');
+      debugPrint('Failed to save MQTT alert: $e');
     }
   }
 
@@ -280,7 +308,7 @@ class AlertBloc extends Bloc<AlertEvent, AlertState> {
       final alert = Alert.fromJson(data);
       add(AlertReceivedFromMQTT(alert));
     } catch (e) {
-      print('Error processing alert message: $e');
+      debugPrint('Error processing alert message: $e');
     }
   }
 
@@ -347,8 +375,8 @@ class AlertBloc extends Bloc<AlertEvent, AlertState> {
   }
 
   @override
-  Future<void> close() {
-    // Cleanup if needed
+  Future<void> close() async {
+    await _mqttSubscription?.cancel();
     return super.close();
   }
 }

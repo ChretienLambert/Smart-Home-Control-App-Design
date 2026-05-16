@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math';
 import '../models/user.dart';
 import '../models/auth_session.dart';
 import '../services/database_service.dart';
+import '../services/home_service.dart';
 import '../utils/logger.dart';
+import '../utils/app_utils.dart';
 import '../utils/password_utils.dart';
 
 class AuthService {
@@ -13,6 +13,7 @@ class AuthService {
   AuthService._internal();
 
   final DatabaseService _db = DatabaseService();
+  final HomeService _homeService = HomeService();
   User? _currentUser;
   AuthSession? _currentSession;
 
@@ -70,7 +71,7 @@ class AuthService {
       }
 
       // Create new user
-      final user = User(
+      var user = User(
         id: _generateId(),
         username: request.username,
         email: request.email,
@@ -88,6 +89,7 @@ class AuthService {
       // Hash and store password
       final passwordHash = PasswordUtils.hashPassword(request.password);
       await _db.setUserPassword(user.id, passwordHash);
+      user = await _homeService.ensureHomeForUser(user);
 
       AppLogger.info('User registered successfully: ${user.username}');
 
@@ -144,8 +146,11 @@ class AuthService {
       AppLogger.info('User logged in successfully: ${user.username}');
 
       // Update last login
-      final updatedUser = user.copyWith(lastLoginAt: DateTime.now());
+      var updatedUser = user.copyWith(lastLoginAt: DateTime.now());
       await _db.updateUser(updatedUser);
+      if (updatedUser.role != UserRole.admin) {
+        updatedUser = await _homeService.ensureHomeForUser(updatedUser);
+      }
 
       // Create session
       final session = await _createSession(user.id, deviceId: request.deviceId);
@@ -336,6 +341,36 @@ class AuthService {
     return true;
   }
 
+  Future<bool> restoreSession(String token) async {
+    try {
+      final session = await _db.getAuthSessionByToken(token);
+      if (session == null || !session.isValid) {
+        if (session != null && !session.isActive) {
+          await _db.deleteAuthSession(session.id);
+        }
+        await _clearCurrentUser();
+        return false;
+      }
+
+      final user = await _db.getUser(session.userId);
+      if (user == null || user.status != UserStatus.active) {
+        await _db.deleteAuthSession(session.id);
+        await _clearCurrentUser();
+        return false;
+      }
+
+      final hydratedUser = user.role == UserRole.admin
+          ? user
+          : await _homeService.ensureHomeForUser(user);
+      await _setCurrentUser(hydratedUser, session);
+      return true;
+    } catch (e) {
+      AppLogger.error('Session restore failed', e);
+      await _clearCurrentUser();
+      return false;
+    }
+  }
+
   // Private methods
   Future<AuthSession> _createSession(String userId, {String? deviceId}) async {
     final session = AuthSession(
@@ -367,22 +402,18 @@ class AuthService {
     _authController.add(false);
   }
 
-  String _generateId() {
-    return DateTime.now().millisecondsSinceEpoch.toString() + _randomString(8);
+  void syncCurrentUser(User user) {
+    if (_currentUser?.id != user.id) {
+      return;
+    }
+    _currentUser = user;
+    _userController.add(user);
+    _authController.add(isAuthenticated);
   }
 
-  String _generateToken() {
-    final bytes = List<int>.generate(32, (_) => Random().nextInt(256));
-    return base64.encode(bytes);
-  }
+  String _generateId() => AppUtils.generateId();
 
-  String _randomString(int length) {
-    const chars =
-        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final random = Random();
-    return String.fromCharCodes(Iterable.generate(
-        length, (_) => chars.codeUnitAt(random.nextInt(chars.length))));
-  }
+  String _generateToken() => AppUtils.generateSecureToken();
 
   // Cleanup
   void dispose() {

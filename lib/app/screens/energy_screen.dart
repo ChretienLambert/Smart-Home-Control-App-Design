@@ -102,7 +102,7 @@ class _EnergyScreenState extends State<EnergyScreen> {
                         });
                       },
                       backgroundColor: Colors.grey[200],
-                      selectedColor: const Color(0xFF1E7F5C).withOpacity(0.2),
+                      selectedColor: const Color(0xFF1E7F5C).withValues(alpha: 0.2),
                       labelStyle: TextStyle(
                         color: isSelected
                             ? const Color(0xFF1E7F5C)
@@ -172,7 +172,7 @@ class _EnergyScreenState extends State<EnergyScreen> {
                   Text(
                     _selectedPeriod,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 16,
                     ),
                   ),
@@ -219,7 +219,7 @@ class _EnergyScreenState extends State<EnergyScreen> {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -233,7 +233,7 @@ class _EnergyScreenState extends State<EnergyScreen> {
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color: device['color'].withOpacity(0.1),
+                              color: device['color'].withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Icon(

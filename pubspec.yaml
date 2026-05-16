@@ -3,7 +3,7 @@ description: A Smart Home Control App built with Flutter
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
   flutter: ">=3.10.0"
 
 dependencies:
@@ -16,8 +16,8 @@ dependencies:
   flutter_svg: ^2.0.10+1
   flutter_animate: ^4.5.0
   google_fonts: ^6.2.1
-  # MQTT Communication
-  mqtt_client: ^10.0.0
+  # Bluetooth serial communication for HC-05 / HC-06 modules
+  flutter_libserialport: ^0.6.0
   # Local Database
   sqflite: ^2.3.3
   sqflite_common_ffi: ^2.3.3
@@ -36,6 +36,8 @@ dependencies:
   flutter_local_notifications: ^17.2.2
   # Permissions
   permission_handler: ^11.3.1
+  crypto: ^3.0.6
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -48,5 +50,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - .env
     - assets/images/
     - assets/icons/

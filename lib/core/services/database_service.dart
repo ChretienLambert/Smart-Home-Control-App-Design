@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 import '../models/device.dart';
@@ -13,15 +14,44 @@ class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
   DatabaseService._internal() {
-    // Initialize FFI database factory for Windows
-    databaseFactory = databaseFactoryFfi;
+    _configureDatabaseFactory();
   }
 
   Database? _database;
+  Completer<Database>? _dbCompleter;
 
   Future<Database> get database async {
-    _database ??= await _initDatabase();
+    if (_database != null) return _database!;
+    if (_dbCompleter != null) return _dbCompleter!.future;
+    _dbCompleter = Completer<Database>();
+    try {
+      _database = await _initDatabase();
+      _dbCompleter!.complete(_database!);
+    } catch (e, st) {
+      _dbCompleter!.completeError(e, st);
+      _dbCompleter = null;
+      rethrow;
+    }
     return _database!;
+  }
+
+  void _configureDatabaseFactory() {
+    if (kIsWeb) {
+      return;
+    }
+
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.macOS:
+        sqfliteFfiInit();
+        databaseFactory = databaseFactoryFfi;
+        break;
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+      case TargetPlatform.fuchsia:
+        break;
+    }
   }
 
   Future<Database> _initDatabase() async {
@@ -29,7 +59,10 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -155,6 +188,16 @@ class DatabaseService {
       )
     ''');
 
+    // Create password reset tokens table
+    await db.execute('''
+      CREATE TABLE password_reset_tokens (
+        email TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
     // Create indexes for better performance
     await db.execute('CREATE INDEX idx_users_email ON users(email)');
     await db.execute('CREATE INDEX idx_users_username ON users(username)');
@@ -172,16 +215,26 @@ class DatabaseService {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      // Drop all tables to ensure clean schema update
+      // Legacy: full rebuild (only v1 databases, no real user data expected)
       await db.execute('DROP TABLE IF EXISTS settings');
       await db.execute('DROP TABLE IF EXISTS alerts');
       await db.execute('DROP TABLE IF EXISTS automation_rules');
       await db.execute('DROP TABLE IF EXISTS devices');
       await db.execute('DROP TABLE IF EXISTS rooms');
       await db.execute('DROP TABLE IF EXISTS auth_sessions');
+      await db.execute('DROP TABLE IF EXISTS user_credentials');
       await db.execute('DROP TABLE IF EXISTS users');
-
       await _onCreate(db, newVersion);
+    } else if (oldVersion < 3) {
+      // v2→v3: add password_reset_tokens table without touching existing data
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+          email TEXT PRIMARY KEY,
+          token_hash TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      ''');
     }
   }
 
@@ -915,7 +968,7 @@ class DatabaseService {
       orderBy: 'timestamp DESC',
       limit: limit,
     );
-    return maps.map((map) => Alert.fromJson(map)).toList();
+    return maps.map((map) => _deserializeAlert(map)).toList();
   }
 
   Future<Alert?> getAlert(String id) async {
@@ -926,9 +979,33 @@ class DatabaseService {
       whereArgs: [id],
     );
     if (maps.isNotEmpty) {
-      return Alert.fromJson(maps.first);
+      return _deserializeAlert(maps.first);
     }
     return null;
+  }
+
+  Alert _deserializeAlert(Map<String, dynamic> map) {
+    final m = Map<String, dynamic>.from(map);
+
+    // Convert snake_case column names to camelCase field names
+    if (m.containsKey('device_id')) {
+      m['deviceId'] = m.remove('device_id');
+    }
+    if (m.containsKey('rule_id')) {
+      m['ruleId'] = m.remove('rule_id');
+    }
+
+    // Convert INTEGER → bool for SQLite boolean fields
+    if (m.containsKey('is_read')) {
+      final v = m.remove('is_read');
+      m['isRead'] = v is int ? v == 1 : (v == true);
+    }
+    if (m.containsKey('is_acknowledged')) {
+      final v = m.remove('is_acknowledged');
+      m['isAcknowledged'] = v is int ? v == 1 : (v == true);
+    }
+
+    return Alert.fromJson(m);
   }
 
   Future<void> insertAlert(Alert alert) async {
@@ -998,6 +1075,36 @@ class DatabaseService {
       'alerts',
       where: 'id = ?',
       whereArgs: [id],
+    );
+  }
+
+  Future<void> clearAllAlerts() async {
+    final db = await database;
+    await db.delete('alerts');
+  }
+
+  Future<void> clearAlertsForHome(String homeId) async {
+    if (homeId.isEmpty) {
+      return;
+    }
+
+    final db = await database;
+    final devices = await getAllDevices();
+    final homeDeviceIds = devices
+        .where((device) => device.properties?['homeId'] == homeId)
+        .map((device) => device.id)
+        .toList()
+      ..add('home:$homeId');
+
+    if (homeDeviceIds.isEmpty) {
+      return;
+    }
+
+    final placeholders = List.filled(homeDeviceIds.length, '?').join(',');
+    await db.delete(
+      'alerts',
+      where: 'device_id IN ($placeholders)',
+      whereArgs: homeDeviceIds,
     );
   }
 
@@ -1072,14 +1179,16 @@ class DatabaseService {
   }
 
   Future<void> storePasswordResetToken(
-      String email, String tokenHash, Duration validityDuration) async {
+      String email, String tokenHash, Duration validity) async {
     final db = await database;
+    final now = DateTime.now();
     await db.insert(
-      'settings',
+      'password_reset_tokens',
       {
-        'key': 'reset_token_$email',
-        'value': tokenHash,
-        'updated_at': DateTime.now().add(validityDuration).toIso8601String(),
+        'email': email,
+        'token_hash': tokenHash,
+        'expires_at': now.add(validity).toIso8601String(),
+        'created_at': now.toIso8601String(),
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -1087,36 +1196,22 @@ class DatabaseService {
 
   Future<String?> getPasswordResetToken(String email) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'settings',
-      where: 'key = ?',
-      whereArgs: ['reset_token_$email'],
+    final result = await db.query(
+      'password_reset_tokens',
+      where: 'email = ? AND expires_at > ?',
+      whereArgs: [email, DateTime.now().toIso8601String()],
+      limit: 1,
     );
-
-    if (maps.isNotEmpty) {
-      final updatedAt = maps.first['updated_at'] as String;
-      final expiryTime = DateTime.parse(updatedAt);
-
-      if (DateTime.now().isBefore(expiryTime)) {
-        return maps.first['value'] as String;
-      }
-
-      // Token expired, delete it
-      await db.delete(
-        'settings',
-        where: 'key = ?',
-        whereArgs: ['reset_token_$email'],
-      );
-    }
-    return null;
+    if (result.isEmpty) return null;
+    return result.first['token_hash'] as String?;
   }
 
   Future<void> deletePasswordResetToken(String email) async {
     final db = await database;
     await db.delete(
-      'settings',
-      where: 'key = ?',
-      whereArgs: ['reset_token_$email'],
+      'password_reset_tokens',
+      where: 'email = ?',
+      whereArgs: [email],
     );
   }
 
@@ -1135,6 +1230,7 @@ class DatabaseService {
     await db.delete('automation_rules');
     await db.delete('devices');
     await db.delete('rooms');
+    await db.delete('user_credentials');
     await db.delete('auth_sessions');
     await db.delete('users');
     await db.delete('settings');

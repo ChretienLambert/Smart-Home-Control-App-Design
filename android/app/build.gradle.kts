@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.smart_home_control"
+    namespace = "com.smarthome.control"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,21 +20,33 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.smart_home_control"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        applicationId = "com.smarthome.control"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // App metadata
+        resValue "string/app_name", "Smart Home Control"
+        resValue "string/app_version", "${flutter.versionName} (${flutter.versionCode})"
+        
+        // Multi-dex support
+        multiDexEnabled true
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Enable code shrinking and obfuscation
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile("proguard-android.txt")
+            proguardFiles "proguard-rules.pro"
+            
+            // TODO: Add your own signing config for release build.
+            // For production, create a release keystore
             signingConfig = signingConfigs.getByName("debug")
+        }
+        debug {
+            applicationIdSuffix ".debug"
         }
     }
 }

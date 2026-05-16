@@ -1,232 +1,166 @@
 import 'dart:async';
-import '../models/device.dart';
-import '../models/room.dart';
-import '../models/automation_rule.dart';
-import '../services/database_service.dart';
-import '../services/mqtt_service.dart';
-import '../services/automation_engine.dart';
-import '../services/database_seeder.dart';
-import '../simulation/device_simulator.dart';
+
+import '../bloc/alert_bloc.dart';
 import '../bloc/device_bloc.dart';
 import '../bloc/room_bloc.dart';
-import '../bloc/alert_bloc.dart';
+import '../models/automation_rule.dart';
+import '../models/device.dart';
+import '../models/room.dart';
+import '../services/automation_engine.dart';
+import '../services/database_seeder.dart';
+import '../services/database_service.dart';
+import '../services/home_service.dart';
+import '../services/mqtt_service.dart';
 
 class AppService {
   static final AppService _instance = AppService._internal();
   factory AppService() => _instance;
   AppService._internal();
 
-  // Services
   final DatabaseService _db = DatabaseService();
   final MQTTService _mqtt = MQTTService();
   final AutomationEngine _automation = AutomationEngine();
-  final DeviceSimulator _simulator = DeviceSimulator();
+  final HomeService _homeService = HomeService();
 
-  // BLoCs
   late final DeviceBloc _deviceBloc;
   late final RoomBloc _roomBloc;
   late final AlertBloc _alertBloc;
 
-  // App state
   bool _isInitialized = false;
-  bool _isSimulationMode = false;
   bool _isConnected = false;
 
-  // Getters
   bool get isInitialized => _isInitialized;
-  bool get isSimulationMode => _isSimulationMode;
   bool get isConnected => _isConnected;
   DeviceBloc get deviceBloc => _deviceBloc;
   RoomBloc get roomBloc => _roomBloc;
   AlertBloc get alertBloc => _alertBloc;
+  AutomationEngine get automationEngine => _automation;
 
-  // Stream controllers
   final StreamController<AppState> _stateController =
       StreamController<AppState>.broadcast();
 
   Stream<AppState> get appState => _stateController.stream;
 
-  Future<void> initialize({bool simulationMode = false}) async {
-    if (_isInitialized) return;
+  Future<void> initialize() async {
+    if (_isInitialized) {
+      return;
+    }
 
     try {
       _emitState(AppState.initializing);
 
-      // Initialize database and seed with dummy data
       await DatabaseSeeder().seedDatabase();
+      await _homeService.ensureHomesForAllUsers();
 
-      // Initialize BLoCs
+      // Ensure the currentUser in the DB is fresh in case seeding added devices
+      final currentUser =
+          await _db.getUser('john_doe'); // Default login for now
+      if (currentUser != null) {
+        // This is a bit of a hack to sync the AuthProvider if it's already active
+        // but it's safer for initialization.
+      }
+
       _deviceBloc = DeviceBloc();
       _roomBloc = RoomBloc();
       _alertBloc = AlertBloc();
 
-      // Load MQTT configuration
-      await _loadMqttConfiguration();
+      await _loadBluetoothConfiguration();
+      _isConnected = await _mqtt.connect(isAutoConnect: true);
 
-      // Connect to MQTT broker
-      if (!simulationMode) {
-        _isConnected = await _mqtt.connect();
-        if (!_isConnected) {
-          _emitState(AppState.error('Failed to connect to MQTT broker'));
-          return;
-        }
-      }
-
-      // Start automation engine
       await _automation.start();
 
-      // Start simulator if in simulation mode
-      if (simulationMode) {
-        _isSimulationMode = true;
-        await _simulator.start();
-        await _initializeSampleData();
-      }
-
-      // Load initial data
       await _loadInitialData();
 
       _isInitialized = true;
-      _emitState(AppState.ready);
+      _emitState(_isConnected ? AppState.ready : AppState.disconnected);
     } catch (e) {
       _emitState(AppState.error('Initialization failed: $e'));
     }
   }
 
-  Future<void> _loadMqttConfiguration() async {
-    final broker = await _db.getSetting('mqtt_broker') ?? '192.168.1.100';
-    final port =
-        int.tryParse(await _db.getSetting('mqtt_port') ?? '1883') ?? 1883;
-    final username = await _db.getSetting('mqtt_username') ?? '';
-    final password = await _db.getSetting('mqtt_password') ?? '';
+  Future<void> _loadBluetoothConfiguration() async {
+    final config = await getBluetoothConfiguration();
 
     _mqtt.updateConfig(
-      broker: broker,
-      port: port,
-      username: username,
-      password: password,
+      portName: config.portName,
+      baudRate: config.baudRate,
+      deviceHint: config.deviceHint,
     );
   }
 
-  Future<void> _initializeSampleData() async {
-    // Create sample rooms
-    final rooms = [
-      Room(
-        id: 'sim_living_room',
-        name: 'Living Room',
-        description: 'Main living area',
-        deviceIds: ['sim_light_1', 'sim_temp_1'],
-        createdAt: DateTime.now(),
-        lastUpdated: DateTime.now(),
-      ),
-      Room(
-        id: 'sim_bedroom',
-        name: 'Bedroom',
-        description: 'Master bedroom',
-        deviceIds: ['sim_ac_1'],
-        createdAt: DateTime.now(),
-        lastUpdated: DateTime.now(),
-      ),
-      Room(
-        id: 'sim_kitchen',
-        name: 'Kitchen',
-        description: 'Kitchen area',
-        deviceIds: ['sim_smoke_1'],
-        createdAt: DateTime.now(),
-        lastUpdated: DateTime.now(),
-      ),
-      Room(
-        id: 'sim_hallway',
-        name: 'Hallway',
-        description: 'Main hallway',
-        deviceIds: ['sim_motion_1'],
-        createdAt: DateTime.now(),
-        lastUpdated: DateTime.now(),
-      ),
-      Room(
-        id: 'sim_entrance',
-        name: 'Entrance',
-        description: 'Front entrance',
-        deviceIds: ['sim_door_1'],
-        createdAt: DateTime.now(),
-        lastUpdated: DateTime.now(),
-      ),
-    ];
+  Future<BluetoothConfiguration> getBluetoothConfiguration() async {
+    final storedPortName = await _db.getSetting('bluetooth_port_name');
+    final baudRate =
+        int.tryParse(await _db.getSetting('bluetooth_baud_rate') ?? '9600') ??
+            9600;
+    final deviceHint =
+        await _db.getSetting('bluetooth_device_hint') ?? 'Arduino Uno';
+    final portName = _preferredUsbPortName() ??
+        (storedPortName?.trim().isNotEmpty == true
+            ? storedPortName!.trim()
+            : 'COM9');
 
-    for (final room in rooms) {
-      await _db.insertRoom(room);
-    }
-
-    // Create sample devices
-    for (final simDevice in _simulator.simulatedDevices) {
-      await _db.insertDevice(simDevice.toDevice());
-    }
-
-    // Create sample automation rules
-    final rules = [
-      AutomationRule(
-        id: 'sim_rule_1',
-        name: 'Night Light Automation',
-        description: 'Turn on lights when motion is detected at night',
-        conditions: [
-          const AutomationCondition(
-            deviceId: 'sim_motion_1',
-            type: ConditionType.sensorValue,
-            value: true,
-            operator: ComparisonOperator.equals,
-            sensorProperty: 'motion',
-          ),
-        ],
-        actions: [
-          const AutomationAction(
-            deviceId: 'sim_light_1',
-            type: ActionType.turnOn,
-            value: true,
-          ),
-        ],
-        isEnabled: true,
-        createdAt: DateTime.now(),
-        lastUpdated: DateTime.now(),
-      ),
-      AutomationRule(
-        id: 'sim_rule_2',
-        name: 'Temperature Control',
-        description: 'Turn on AC when temperature exceeds 26°C',
-        conditions: [
-          const AutomationCondition(
-            deviceId: 'sim_temp_1',
-            type: ConditionType.sensorValue,
-            value: 26.0,
-            operator: ComparisonOperator.greaterThan,
-            sensorProperty: 'temperature',
-          ),
-        ],
-        actions: [
-          const AutomationAction(
-            deviceId: 'sim_ac_1',
-            type: ActionType.turnOn,
-            value: true,
-          ),
-        ],
-        isEnabled: true,
-        createdAt: DateTime.now(),
-        lastUpdated: DateTime.now(),
-      ),
-    ];
-
-    for (final rule in rules) {
-      await _db.insertAutomationRule(rule);
-    }
+    return BluetoothConfiguration(
+      portName: portName,
+      baudRate: baudRate,
+      deviceHint: deviceHint,
+    );
   }
 
+  Future<BluetoothConfiguration> getMqttConfiguration() =>
+      getBluetoothConfiguration();
+
   Future<void> _loadInitialData() async {
-    // Load devices
     _deviceBloc.add(LoadDevices());
-
-    // Load rooms
     _roomBloc.add(LoadRooms());
-
-    // Load alerts
     _alertBloc.add(const LoadAlerts());
+  }
+
+  String? _preferredUsbPortName() {
+    final ports = _mqtt.listAvailablePorts();
+    if (ports.isEmpty) return null;
+
+    for (final port in ports) {
+      final haystack =
+          '${port.name} ${port.description} ${port.manufacturer} ${port.productName}'
+              .toLowerCase();
+      final looksLikeArduino = haystack.contains('arduino') ||
+          haystack.contains('usb serial') ||
+          haystack.contains('usb-serial') ||
+          haystack.contains('ch340') ||
+          haystack.contains('cp210') ||
+          haystack.contains('ftdi');
+      if (looksLikeArduino) {
+        return port.name;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> updateBluetoothConfiguration({
+    required String portName,
+    required int baudRate,
+    String? deviceHint,
+  }) async {
+    await _db.setSetting('bluetooth_port_name', portName);
+    await _db.setSetting('bluetooth_baud_rate', baudRate.toString());
+    await _db.setSetting('bluetooth_device_hint', deviceHint ?? 'Arduino Uno');
+
+    _mqtt.updateConfig(
+      portName: portName,
+      baudRate: baudRate,
+      deviceHint: deviceHint,
+    );
+
+    await _mqtt.disconnect(autoReconnect: false);
+    _isConnected = await _mqtt.connect(isAutoConnect: false);
+
+    if (_isConnected) {
+      _emitState(AppState.ready);
+    } else {
+      _emitState(AppState.disconnected);
+    }
   }
 
   Future<void> updateMqttConfiguration({
@@ -234,49 +168,18 @@ class AppService {
     required int port,
     String? username,
     String? password,
-  }) async {
-    // Save configuration
-    await _db.setSetting('mqtt_broker', broker);
-    await _db.setSetting('mqtt_port', port.toString());
-    await _db.setSetting('mqtt_username', username ?? '');
-    await _db.setSetting('mqtt_password', password ?? '');
-
-    // Update MQTT service
-    _mqtt.updateConfig(
-      broker: broker,
-      port: port,
-      username: username,
-      password: password,
-    );
-
-    // Reconnect if not in simulation mode
-    if (!_isSimulationMode && _isConnected) {
-      _mqtt.disconnect();
-      _isConnected = await _mqtt.connect();
-
-      if (_isConnected) {
-        _emitState(AppState.ready);
-      } else {
-        _emitState(AppState.error('Failed to reconnect to MQTT broker'));
-      }
-    }
-  }
-
-  Future<void> toggleSimulationMode() async {
-    if (_isSimulationMode) {
-      await _simulator.stop();
-      _isSimulationMode = false;
-
-      // Connect to real MQTT broker
-      _isConnected = await _mqtt.connect();
-    } else {
-      _mqtt.disconnect();
-      _isSimulationMode = true;
-      await _simulator.start();
-    }
-
-    _emitState(AppState.ready);
-  }
+    String? clientId,
+    int? keepAliveSeconds,
+    bool? useTls,
+    bool? cleanSession,
+    String? lastWillTopic,
+    String? lastWillMessage,
+  }) =>
+      updateBluetoothConfiguration(
+        portName: broker,
+        baudRate: port,
+        deviceHint: username,
+      );
 
   Future<void> addDevice(Device device) async {
     await _db.insertDevice(device);
@@ -286,6 +189,15 @@ class AppService {
   Future<void> addRoom(Room room) async {
     await _db.insertRoom(room);
     _roomBloc.add(AddRoom(room));
+  }
+
+  Future<void> refreshHardwareData() async {
+    if (_isConnected) {
+      _mqtt.requestStateSync();
+    }
+    _deviceBloc.add(LoadDevices());
+    _roomBloc.add(LoadRooms());
+    _alertBloc.add(const LoadAlerts());
   }
 
   Future<void> addAutomationRule(AutomationRule rule) async {
@@ -306,22 +218,32 @@ class AppService {
   }
 
   Future<void> dispose() async {
-    if (!_isInitialized) return;
+    if (!_isInitialized) {
+      return;
+    }
 
     await _automation.stop();
-    if (_isSimulationMode) {
-      await _simulator.stop();
-    } else {
-      _mqtt.disconnect();
-    }
+    await _mqtt.disconnect();
 
     _deviceBloc.close();
     _roomBloc.close();
     _alertBloc.close();
-    _stateController.close();
+    await _stateController.close();
 
     _isInitialized = false;
   }
+}
+
+class BluetoothConfiguration {
+  final String portName;
+  final int baudRate;
+  final String deviceHint;
+
+  const BluetoothConfiguration({
+    required this.portName,
+    required this.baudRate,
+    required this.deviceHint,
+  });
 }
 
 enum AppStateStatus {

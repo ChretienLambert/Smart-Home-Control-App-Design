@@ -1,9 +1,9 @@
-import 'dart:convert';
-import 'dart:math';
 import '../models/user.dart';
-import '../models/auth_session.dart';
+import '../config/smart_home_hardware.dart';
 import '../services/database_service.dart';
+import '../services/home_service.dart';
 import '../services/logger_service.dart';
+import '../utils/app_utils.dart';
 import '../utils/password_utils.dart';
 
 class DatabaseSeeder {
@@ -12,83 +12,76 @@ class DatabaseSeeder {
   DatabaseSeeder._internal();
 
   final DatabaseService _db = DatabaseService();
+  final HomeService _homeService = HomeService();
   final LoggerService _logger = LoggerService();
+
+  static const Set<String> _coreUsernames = {'admin', 'john_doe'};
 
   Future<void> seedDatabase() async {
     _logger.info('Starting database seeding...');
 
     try {
-      // Check if users already exist
       final existingUsers = await _db.getAllUsers();
-      if (existingUsers.isNotEmpty) {
-        _logger.info('Database already has ${existingUsers.length} users',
-            context: {
-              'userCount': existingUsers.length,
-              'users': existingUsers.map((u) => u.username).toList(),
-            });
+      final hasOnlyCoreUsers = existingUsers.isNotEmpty &&
+          existingUsers.every((user) => _coreUsernames.contains(user.username));
+
+      if (!hasOnlyCoreUsers) {
+        await _resetToCoreAccounts(existingUsers);
         return;
       }
 
-      // Create dummy users
-      await _createDummyUsers();
-
-      _logger.info('Database seeding completed successfully');
+      await _ensureCoreAccounts(existingUsers);
+      _logger.info('Database already normalized for core accounts');
     } catch (e, stackTrace) {
-      _logger.critical('Database seeding failed',
-          error: e, stackTrace: stackTrace);
+      _logger.critical(
+        'Database seeding failed',
+        error: e,
+        stackTrace: stackTrace,
+      );
     }
   }
 
-  Future<void> _createDummyUsers() async {
-    final dummyUsers = [
-      {
-        'username': 'admin',
-        'email': 'admin@smarthome.com',
-        'password': 'admin123',
-        'firstName': 'System',
-        'lastName': 'Administrator',
-        'role': UserRole.admin,
-        'phoneNumber': '+1234567890',
-      },
-      {
-        'username': 'john_doe',
-        'email': 'john@smarthome.com',
-        'password': 'user123',
-        'firstName': 'John',
-        'lastName': 'Doe',
-        'role': UserRole.user,
-        'phoneNumber': '+1234567891',
-      },
-      {
-        'username': 'jane_smith',
-        'email': 'jane@smarthome.com',
-        'password': 'user123',
-        'firstName': 'Jane',
-        'lastName': 'Smith',
-        'role': UserRole.user,
-        'phoneNumber': '+1234567892',
-      },
-      {
-        'username': 'guest_user',
-        'email': 'guest@smarthome.com',
-        'password': 'guest123',
-        'firstName': 'Guest',
-        'lastName': 'User',
-        'role': UserRole.guest,
-        'phoneNumber': '+1234567893',
-      },
-    ];
+  Future<void> _resetToCoreAccounts(List<User> existingUsers) async {
+    _logger.warning('Resetting database to admin and john_doe only...');
 
-    for (final userData in dummyUsers) {
-      try {
-        final user = User(
-          id: _generateId(),
-          username: userData['username'] as String,
-          email: userData['email'] as String,
-          firstName: userData['firstName'] as String?,
-          lastName: userData['lastName'] as String?,
-          phoneNumber: userData['phoneNumber'] as String?,
-          role: userData['role'] as UserRole,
+    try {
+      final authSessions = await _db.getAllAuthSessions();
+      for (final session in authSessions) {
+        await _db.deleteAuthSession(session.id);
+      }
+
+      await _db.clearAllData();
+
+      for (final user in existingUsers) {
+        await _db.deleteUser(user.id);
+      }
+
+      await _createCoreAccounts();
+      _logger.info('Database reset to core accounts completed');
+    } catch (e) {
+      _logger.error('Failed to reset database to core accounts', error: e);
+      rethrow;
+    }
+  }
+
+  Future<void> _ensureCoreAccounts(List<User> existingUsers) async {
+    final existingByUsername = {
+      for (final user in existingUsers) user.username: user,
+    };
+
+    for (final username in _coreUsernames) {
+      var user = existingByUsername[username];
+      
+      if (user == null) {
+        final seed = _seedFor(username);
+        user = User(
+          id: AppUtils.generateId(),
+          username: seed['username'] as String,
+          email: seed['email'] as String,
+          firstName: seed['firstName'] as String?,
+          lastName: seed['lastName'] as String?,
+          phoneNumber: seed['phoneNumber'] as String?,
+          role: seed['role'] as UserRole,
           status: UserStatus.active,
           createdAt: DateTime.now(),
           lastLoginAt: DateTime.now(),
@@ -98,167 +91,117 @@ class DatabaseSeeder {
             'autoBackup': true,
             'language': 'en',
           },
-          deviceIds: [],
-          roomIds: [],
+          deviceIds: const [],
+          roomIds: const [],
         );
-
         await _db.insertUser(user);
-
-        // Hash and store password
-        final passwordHash =
-            PasswordUtils.hashPassword(userData['password'] as String);
-        await _db.setUserPassword(user.id, passwordHash);
-
-        print('👤 Created user: ${user.username} (${user.email})');
-
-        // Create a session for the user (in a real app, this would be done during login)
-        final session = AuthSession(
-          id: _generateId(),
-          userId: user.id,
-          token: _generateToken(),
-          refreshToken: _generateToken(),
-          createdAt: DateTime.now(),
-          expiresAt: DateTime.now().add(const Duration(days: 7)),
-          deviceId: 'demo_device',
-          ipAddress: '127.0.0.1',
-          userAgent: 'Smart Home App Demo',
-          isActive: true,
+        await _db.setUserPassword(
+          user.id,
+          PasswordUtils.hashPassword(seed['password'] as String),
         );
+      }
 
-        await _db.insertAuthSession(session);
-      } catch (e) {
-        print('❌ Failed to create user ${userData['username']}: $e');
+      // Ensure hardware devices exist for this user
+      if (user.role != UserRole.admin) {
+        final hardwareDevices = await _db.getAllDevices();
+        final userOwnedHardware = hardwareDevices.where((d) => 
+          user!.deviceIds!.contains(d.id) && SmartHomeHardware.isArduinoWired(d)).toList();
+        
+        if (userOwnedHardware.length < SmartHomeHardware.arduinoWiredDeviceIds.length) {
+          _logger.warning('Hardware devices incomplete for user: ${user.username}. Syncing...');
+          await _homeService.ensureHomeForUser(user);
+        }
       }
     }
-
-    print('🎉 Created ${dummyUsers.length} dummy users successfully');
-    print('\n📋 Default Test Credentials (for testing only):');
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    for (final userData in dummyUsers) {
-      print('👤 ${userData['username']}');
-      print('   📧 ${userData['email']}');
-      print('   🎭 ${userData['role']}');
-      print('');
-    }
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    print(
-        '⚠️  Passwords are stored securely and not displayed. Use provided test credentials for login.');
   }
 
-  Future<void> createSampleRooms() async {
-    final sampleRooms = [
-      {
-        'id': 'room_1',
-        'name': 'Living Room',
-        'description': 'Main living area with entertainment system',
-      },
-      {
-        'id': 'room_2',
-        'name': 'Master Bedroom',
-        'description': 'Primary bedroom with climate control',
-      },
-      {
-        'id': 'room_3',
-        'name': 'Kitchen',
-        'description': 'Smart kitchen with appliances',
-      },
-      {
-        'id': 'room_4',
-        'name': 'Garage',
-        'description': 'Smart garage with door control',
-      },
-    ];
+  Future<void> _createCoreAccounts() async {
+    for (final username in _coreUsernames) {
+      final seed = _seedFor(username);
+      final user = User(
+        id: AppUtils.generateId(),
+        username: seed['username'] as String,
+        email: seed['email'] as String,
+        firstName: seed['firstName'] as String?,
+        lastName: seed['lastName'] as String?,
+        phoneNumber: seed['phoneNumber'] as String?,
+        role: seed['role'] as UserRole,
+        status: UserStatus.active,
+        createdAt: DateTime.now(),
+        lastLoginAt: DateTime.now(),
+        preferences: {
+          'theme': 'light',
+          'notifications': true,
+          'autoBackup': true,
+          'language': 'en',
+        },
+        deviceIds: const [],
+        roomIds: const [],
+      );
 
-    for (final roomData in sampleRooms) {
-      // This would require creating Room model and database methods
-      print('🏠 Would create room: ${roomData['name']}');
+      await _db.insertUser(user);
+      await _db.setUserPassword(
+        user.id,
+        PasswordUtils.hashPassword(seed['password'] as String),
+      );
+
+      // Ensure home template is created for this user
+      await _homeService.ensureHomeForUser(user);
+
+      _logger.info(
+        'Created seed user ${user.username}',
+        context: {'email': user.email},
+      );
     }
   }
 
-  Future<void> createSampleDevices() async {
-    final sampleDevices = [
-      {
-        'id': 'device_1',
-        'name': 'Living Room Light',
-        'roomId': 'room_1',
-        'type': 'Smart Light',
-        'status': 'online',
-        'isOn': true,
-      },
-      {
-        'id': 'device_2',
-        'name': 'Thermostat',
-        'roomId': 'room_2',
-        'type': 'Climate Control',
-        'status': 'online',
-        'isOn': true,
-      },
-      {
-        'id': 'device_3',
-        'name': 'Smart Lock',
-        'roomId': 'room_4',
-        'type': 'Security',
-        'status': 'online',
-        'isOn': true,
-      },
-    ];
-
-    for (final deviceData in sampleDevices) {
-      // This would require creating Device model and database methods
-      print('🔌 Would create device: ${deviceData['name']}');
+  Map<String, Object?> _seedFor(String username) {
+    switch (username) {
+      case 'admin':
+        return {
+          'username': 'admin',
+          'email': 'admin@smarthome.com',
+          'password': 'admin123',
+          'firstName': 'System',
+          'lastName': 'Administrator',
+          'role': UserRole.admin,
+          'phoneNumber': '+1234567890',
+        };
+      case 'john_doe':
+      default:
+        return {
+          'username': 'john_doe',
+          'email': 'john@smarthome.com',
+          'password': 'user123',
+          'firstName': 'John',
+          'lastName': 'Doe',
+          'role': UserRole.user,
+          'phoneNumber': '+1234567891',
+        };
     }
   }
 
   Future<void> clearDatabase() async {
-    print('🗑️  Clearing database...');
+    _logger.warning('Clearing database...');
 
     try {
-      // Delete all sessions
       final sessions = await _db.getAllAuthSessions();
       for (final session in sessions) {
         await _db.deleteAuthSession(session.id);
       }
 
-      // Delete all users
       final users = await _db.getAllUsers();
       for (final user in users) {
         await _db.deleteUser(user.id);
       }
 
-      print('✅ Database cleared successfully');
+      await _db.clearAllData();
+      _logger.info('Database cleared successfully');
     } catch (e) {
-      print('❌ Failed to clear database: $e');
+      _logger.error('Failed to clear database', error: e);
     }
   }
 
-  String _generateId() {
-    return DateTime.now().millisecondsSinceEpoch.toString() + _randomString(8);
-  }
-
-  String _generateToken() {
-    final bytes = List<int>.generate(32, (_) => Random().nextInt(256));
-    return base64.encode(bytes);
-  }
-
-  String _randomString(int length) {
-    const chars =
-        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final random = Random();
-    return String.fromCharCodes(Iterable.generate(
-        length, (_) => chars.codeUnitAt(random.nextInt(chars.length))));
-  }
-
-  // Utility method to get user credentials for testing
-  Map<String, String> getTestCredentials() {
-    return {
-      'admin': 'admin123',
-      'john_doe': 'user123',
-      'jane_smith': 'user123',
-      'guest_user': 'guest123',
-    };
-  }
-
-  // Utility method to check if user exists
   Future<bool> userExists(String username) async {
     final user = await _db.getUserByUsername(username);
     return user != null;

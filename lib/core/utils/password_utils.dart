@@ -1,19 +1,19 @@
 import 'dart:convert';
+import 'dart:developer';
+import 'dart:math' hide log;
 import 'package:crypto/crypto.dart';
-import 'logger.dart';
+import 'app_utils.dart';
 
 class PasswordUtils {
   // Simple PBKDF2-like implementation using SHA256
   // For production, use a package like 'pointycastle' or 'bcrypt'
   static const int _iterations = 10000;
-  static const int _saltLength = 32;
 
   static String hashPassword(String password) {
-    final random = DateTime.now().millisecondsSinceEpoch.toString();
-    final salt = sha256
-        .convert(utf8.encode(random))
-        .toString()
-        .substring(0, _saltLength);
+    final random = Random.secure();
+    final saltBytes = List<int>.generate(16, (_) => random.nextInt(256));
+    final salt =
+        saltBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     return _pbkdf2(password, salt);
   }
 
@@ -21,7 +21,7 @@ class PasswordUtils {
     try {
       final parts = hash.split(':');
       if (parts.length != 2) {
-        AppLogger.warning('Invalid hash format');
+        log('Invalid hash format', name: 'PasswordUtils', level: 900);
         return false;
       }
 
@@ -31,7 +31,8 @@ class PasswordUtils {
       final computedHash = _pbkdf2(password, salt);
       return computedHash.split(':')[1] == storedHash;
     } catch (e) {
-      AppLogger.error('Password verification error', e);
+      log('Password verification error: $e',
+          name: 'PasswordUtils', level: 1000);
       return false;
     }
   }
@@ -52,9 +53,5 @@ class PasswordUtils {
     return true;
   }
 
-  static String generateResetToken() {
-    final random = DateTime.now().millisecondsSinceEpoch.toString();
-    final token = sha256.convert(utf8.encode(random)).toString();
-    return token;
-  }
+  static String generateResetToken() => AppUtils.generateSecureToken();
 }

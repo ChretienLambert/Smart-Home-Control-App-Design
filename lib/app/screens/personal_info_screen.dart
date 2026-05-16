@@ -65,8 +65,8 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                       width: 100,
                       height: 100,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E7F5C).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(50),
+                        color: const Color(0xFF1E7F5C).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(50),
                       ),
                       child: const Icon(
                         Icons.person,
@@ -260,7 +260,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1E7F5C).withOpacity(0.1),
+                          color: const Color(0xFF1E7F5C).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Text(

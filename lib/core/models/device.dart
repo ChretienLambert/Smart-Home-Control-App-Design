@@ -58,10 +58,13 @@ class Device {
       identical(this, other) ||
       other is Device &&
           runtimeType == other.runtimeType &&
-          id == other.id;
+          id == other.id &&
+          isOn == other.isOn &&
+          status == other.status &&
+          lastUpdated == other.lastUpdated;
 
   @override
-  int get hashCode => id.hashCode;
+  int get hashCode => Object.hash(id, isOn, status, lastUpdated);
 
   @override
   String toString() {

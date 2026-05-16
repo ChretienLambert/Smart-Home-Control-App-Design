@@ -1,8 +1,13 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../models/device.dart';
+import '../config/smart_home_hardware.dart';
 import '../services/database_service.dart';
 import '../services/mqtt_service.dart';
+import '../services/logger_service.dart';
 
 // Events
 abstract class DeviceEvent extends Equatable {
@@ -94,6 +99,7 @@ class DeviceError extends DeviceState {
 class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
   final DatabaseService _db = DatabaseService();
   final MQTTService _mqtt = MQTTService();
+  StreamSubscription<MqttMessage>? _mqttSubscription;
 
   DeviceBloc() : super(DeviceInitial()) {
     on<LoadDevices>(_onLoadDevices);
@@ -104,7 +110,7 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
     on<DeviceUpdatedFromMQTT>(_onDeviceUpdatedFromMQTT);
 
     // Listen to MQTT messages
-    _mqtt.messages.listen(_handleMqttMessage);
+    _mqttSubscription = _mqtt.messages.listen(_handleMqttMessage);
   }
 
   Future<void> _onLoadDevices(
@@ -203,24 +209,50 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
   Future<void> _onDeviceUpdatedFromMQTT(
       DeviceUpdatedFromMQTT event, Emitter<DeviceState> emit) async {
     try {
+      final existing = await _db.getDevice(event.device.id);
+      if (existing != null && _sameDeviceSnapshot(existing, event.device)) {
+        return;
+      }
+
       // Update database
       await _db.updateDevice(event.device);
 
       // Update state if devices are loaded
       if (state is DeviceLoaded) {
         final currentDevices = (state as DeviceLoaded).devices;
+        
+        // Find existing device to check for changes
+        final existingIndex = currentDevices.indexWhere((d) => d.id == event.device.id);
+        if (existingIndex != -1) {
+           final existing = currentDevices[existingIndex];
+           // Only skip update if ABSOLUTELY nothing changed including timestamp
+           // (though MQTT updates usually change timestamp in _parseDeviceUpdate)
+           if (existing.isOn == event.device.isOn && 
+               existing.status == event.device.status &&
+               existing.lastUpdated == event.device.lastUpdated &&
+               _mapEquals(existing.properties, event.device.properties)) {
+              return;
+           }
+        }
+
         final updatedDevices = currentDevices.map((device) {
           return device.id == event.device.id ? event.device : device;
         }).toList();
+        
         emit(DeviceLoaded(updatedDevices));
       }
     } catch (e) {
       // Don't emit error state for MQTT updates, just log it
-      print('Failed to update device from MQTT: $e');
+      debugPrint('Failed to update device from MQTT: $e');
     }
   }
 
   void _handleMqttMessage(MqttMessage message) {
+    // Only process status updates for actual devices
+    if (!message.topic.startsWith(SmartHomeHardware.deviceBaseTopic)) {
+      return;
+    }
+
     if (message.messageType == 'status' || message.messageType == 'data') {
       _processDeviceUpdate(message);
     }
@@ -228,43 +260,92 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
 
   Future<void> _processDeviceUpdate(MqttMessage message) async {
     try {
-      final deviceId = message.deviceId;
-      if (deviceId.isEmpty) return;
+      final hardwareId = message.deviceId;
+      if (hardwareId.isEmpty) return;
+      
+      // 1. Try direct lookup (for admin or raw hardware view)
+      var device = await _db.getDevice(hardwareId);
 
-      final device = await _db.getDevice(deviceId);
-      if (device == null) return;
+      // 2. If not found, find any device that "maps" to this hardware ID
+      if (device == null) {
+        final allDevices = await _db.getAllDevices();
+        device = allDevices.cast<Device?>().firstWhere(
+              (d) => d != null && (d.id.toLowerCase().endsWith('_${hardwareId.toLowerCase()}') || d.id.toLowerCase() == hardwareId.toLowerCase()),
+              orElse: () => null,
+            );
+      }
 
-      final data = message.data;
-      final updatedDevice = _parseDeviceUpdate(device, data);
-
-      add(DeviceUpdatedFromMQTT(updatedDevice));
+      if (device != null) {
+        final updatedDevice = _parseDeviceUpdate(device, message.data);
+        add(DeviceUpdatedFromMQTT(updatedDevice));
+      } else {
+        LoggerService().warning('Hardware device NOT found in DB for update', context: {
+          'hardwareId': hardwareId,
+          'topic': message.topic,
+        });
+      }
     } catch (e) {
-      print('Error processing device update: $e');
+      debugPrint('Error processing device update: $e');
     }
   }
 
   Device _parseDeviceUpdate(Device device, Map<String, dynamic> data) {
     bool? isOn;
-    Map<String, dynamic>? properties;
+    DeviceStatus? status;
 
     if (data.containsKey('isOn')) {
       isOn = data['isOn'] as bool?;
     }
 
+    if (data.containsKey('status')) {
+      final rawStatus = data['status'] as String?;
+      if (rawStatus != null) {
+        status = DeviceStatus.values.firstWhere(
+          (value) => value.name == rawStatus,
+          orElse: () => device.status,
+        );
+      }
+    }
+
+    // Merge properties instead of replacing them to preserve critical flags like 'arduinoWired'
+    final mergedProperties = Map<String, dynamic>.from(device.properties ?? {});
     if (data.containsKey('properties')) {
-      properties = Map<String, dynamic>.from(data['properties']);
+      final incomingProps = data['properties'] as Map<String, dynamic>;
+      mergedProperties.addAll(incomingProps);
     }
 
     return device.copyWith(
+      status: status ?? device.status,
       isOn: isOn ?? device.isOn,
-      properties: properties ?? device.properties,
+      properties: mergedProperties,
       lastUpdated: DateTime.now(),
     );
   }
 
   @override
-  Future<void> close() {
-    // Cleanup if needed
+  Future<void> close() async {
+    await _mqttSubscription?.cancel();
     return super.close();
+  }
+
+  bool _mapEquals(Map<String, dynamic>? m1, Map<String, dynamic>? m2) {
+    if (m1 == null && m2 == null) return true;
+    if (m1 == null || m2 == null) return false;
+    if (m1.length != m2.length) return false;
+    for (final key in m1.keys) {
+      if (m1[key] != m2[key]) return false;
+    }
+    return true;
+  }
+
+  bool _sameDeviceSnapshot(Device a, Device b) {
+    return a.id == b.id &&
+        a.name == b.name &&
+        a.roomId == b.roomId &&
+        a.type == b.type &&
+        a.status == b.status &&
+        a.isOn == b.isOn &&
+        _mapEquals(a.properties, b.properties) &&
+        a.mqttTopic == b.mqttTopic;
   }
 }

@@ -28,45 +28,35 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final authProvider = context.read<AuthProvider>();
+    final router = GoRouter.of(context);
+
     setState(() {
       _isLoading = true;
     });
 
     try {
       // Use AuthProvider to perform login (ensures app state is updated once)
-      await context
-          .read<AuthProvider>()
-          .login(_emailController.text, _passwordController.text);
+      await authProvider.login(_emailController.text, _passwordController.text);
 
-      final user = context.read<AuthProvider>().currentUser;
+      if (!mounted) return;
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Welcome back, ${user?.displayName ?? _emailController.text}!'),
-            backgroundColor: AppColors.cyanoBlue,
-          ),
-        );
+      final user = authProvider.currentUser;
 
-        try {
-          // Use GoRouter API and guard with mounted; catch any navigation errors
-          GoRouter.of(context).go('/dashboard');
-        } catch (navError, stack) {
-          // Log navigation error and fallback to Navigator
-          // Avoid importing logger service here; print for visibility
-          // If GoRouter fails, try Navigator
-          // ignore: avoid_print
-          print('Navigation error to /dashboard: $navError\n$stack');
-          if (mounted) {
-            try {
-              Navigator.of(context).pushReplacementNamed('/dashboard');
-            } catch (e) {
-              // ignore: avoid_print
-              print('Fallback navigation also failed: $e');
-            }
-          }
-        }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('Welcome back, ${user?.displayName ?? _emailController.text}!'),
+          backgroundColor: AppColors.cyanoBlue,
+        ),
+      );
+
+      try {
+        final isAdmin = authProvider.isAdmin;
+        router.go(isAdmin ? '/admin' : '/dashboard');
+      } catch (navError, stack) {
+        // ignore: avoid_print
+        print('Navigation error after login: $navError\n$stack');
       }
     } catch (e) {
       if (mounted) {
@@ -122,18 +112,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E7F5C),
+                  color: AppColors.cyanoBlue,
                 ),
               ),
 
               const SizedBox(height: 8),
 
               // Subtitle
-              Text(
+              const Text(
                 'Sign in to control your smart home',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.grey[600],
+                  color: AppColors.textSecondary,
                 ),
               ),
 
@@ -158,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide:
-                              const BorderSide(color: Color(0xFF1E7F5C)),
+                              const BorderSide(color: AppColors.cyanoBlue),
                         ),
                       ),
                       validator: (value) {
@@ -197,7 +187,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide:
-                              const BorderSide(color: Color(0xFF1E7F5C)),
+                              const BorderSide(color: AppColors.cyanoBlue),
                         ),
                       ),
                       validator: (value) {
@@ -218,7 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: const Text(
                           'Forgot Password?',
                           style: TextStyle(
-                            color: Color(0xFF1E7F5C),
+                            color: AppColors.cyanoBlue,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -234,7 +224,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _login,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E7F5C),
+                          backgroundColor: AppColors.cyanoBlue,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -273,7 +263,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: const Text(
                               'Sign Up',
                               style: TextStyle(
-                                color: Color(0xFF1E7F5C),
+                                color: AppColors.cyanoBlue,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),

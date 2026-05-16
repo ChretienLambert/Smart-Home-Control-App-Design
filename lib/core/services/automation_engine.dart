@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../models/automation_rule.dart';
 import '../models/device.dart';
 import '../models/alert.dart';
+import '../config/smart_home_hardware.dart';
 import '../services/database_service.dart';
 import '../services/mqtt_service.dart';
 
@@ -16,8 +17,10 @@ class AutomationEngine {
 
   List<AutomationRule> _rules = [];
   List<Device> _devices = [];
-  Timer? _evaluationTimer;
+  Timer? _evaluationDebounceTimer;
   bool _isRunning = false;
+  bool _autoModeEnabled = true;
+  StreamSubscription<MqttMessage>? _mqttSubscription;
 
   // Stream controllers for events
   final StreamController<AutomationEvent> _eventController =
@@ -33,13 +36,8 @@ class AutomationEngine {
     await _loadRules();
     await _loadDevices();
 
-    // Start periodic evaluation (every 5 seconds)
-    _evaluationTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _evaluateRules();
-    });
-
     // Listen to MQTT messages for real-time updates
-    _mqtt.messages.listen(_handleMqttMessage);
+    _mqttSubscription = _mqtt.messages.listen(_handleMqttMessage);
 
     _emitEvent(AutomationEvent('engine_started', 'Automation engine started'));
   }
@@ -48,8 +46,10 @@ class AutomationEngine {
     if (!_isRunning) return;
 
     _isRunning = false;
-    _evaluationTimer?.cancel();
-    _evaluationTimer = null;
+    _evaluationDebounceTimer?.cancel();
+    _evaluationDebounceTimer = null;
+    await _mqttSubscription?.cancel();
+    _mqttSubscription = null;
 
     _emitEvent(AutomationEvent('engine_stopped', 'Automation engine stopped'));
   }
@@ -64,9 +64,17 @@ class AutomationEngine {
 
   Future<void> _evaluateRules() async {
     if (!_isRunning) return;
+    if (!_autoModeEnabled) {
+      return;
+    }
 
+    final now = DateTime.now();
     for (final rule in _rules) {
       if (!rule.isEnabled) continue;
+      if (rule.lastTriggered != null &&
+          now.difference(rule.lastTriggered!).inSeconds < 30) {
+        continue;
+      }
 
       try {
         final shouldTrigger = await _evaluateConditions(rule.conditions);
@@ -109,7 +117,11 @@ class AutomationEngine {
 
   Future<bool> _evaluateDeviceStateCondition(
       AutomationCondition condition) async {
-    final device = _devices.firstWhere((d) => d.id == condition.deviceId);
+    final device = _devices.cast<Device?>().firstWhere(
+          (d) => d?.id == condition.deviceId,
+          orElse: () => null,
+        );
+    if (device == null) return false;
 
     switch (condition.operator) {
       case ComparisonOperator.equals:
@@ -123,7 +135,11 @@ class AutomationEngine {
 
   Future<bool> _evaluateSensorValueCondition(
       AutomationCondition condition) async {
-    final device = _devices.firstWhere((d) => d.id == condition.deviceId);
+    final device = _devices.cast<Device?>().firstWhere(
+          (d) => d?.id == condition.deviceId,
+          orElse: () => null,
+        );
+    if (device == null) return false;
 
     if (device.properties == null || condition.sensorProperty == null) {
       return false;
@@ -154,25 +170,58 @@ class AutomationEngine {
     final now = DateTime.now();
     final targetTime = condition.value as String;
 
-    // Parse time format (HH:MM)
-    final parts = targetTime.split(':');
-    if (parts.length != 2) return false;
+    // Parse time format (HH:MM) or range (HH:MM-HH:MM)
+    if (targetTime.contains('-')) {
+      final parts = targetTime.split('-');
+      if (parts.length != 2) return false;
+      final start = _parseTime(parts[0]);
+      final end = _parseTime(parts[1]);
+      if (start == null || end == null) return false;
 
-    final targetHour = int.tryParse(parts[0]) ?? 0;
-    final targetMinute = int.tryParse(parts[1]) ?? 0;
+      final current = now.hour * 60 + now.minute;
+      final startMinutes = start.hour * 60 + start.minute;
+      final endMinutes = end.hour * 60 + end.minute;
+
+      if (startMinutes < endMinutes) {
+        return current >= startMinutes && current <= endMinutes;
+      } else {
+        // Range crosses midnight (e.g., 22:00-06:00)
+        return current >= startMinutes || current <= endMinutes;
+      }
+    }
+
+    final target = _parseTime(targetTime);
+    if (target == null) return false;
 
     switch (condition.operator) {
       case ComparisonOperator.equals:
-        return now.hour == targetHour && now.minute == targetMinute;
+        return now.hour == target.hour && now.minute == target.minute;
       case ComparisonOperator.greaterThan:
-        return now.hour > targetHour ||
-            (now.hour == targetHour && now.minute > targetMinute);
+        // Handle "Late Night" logic if checking for evening times
+        if (target.hour >= 18) {
+           // If target is 22:00, we consider "greater than" to be 22:00-06:00
+           final current = now.hour * 60 + now.minute;
+           final targetMin = target.hour * 60 + target.minute;
+           return current >= targetMin || current <= 360; // Up to 6 AM
+        }
+        return now.hour > target.hour ||
+            (now.hour == target.hour && now.minute > target.minute);
       case ComparisonOperator.lessThan:
-        return now.hour < targetHour ||
-            (now.hour == targetHour && now.minute < targetMinute);
+        return now.hour < target.hour ||
+            (now.hour == target.hour && now.minute < target.minute);
       default:
         return false;
     }
+  }
+
+  DateTime? _parseTime(String time) {
+    final parts = time.split(':');
+    if (parts.length != 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, h, m);
   }
 
   int _compareValues(dynamic value1, dynamic value2) {
@@ -186,6 +235,20 @@ class AutomationEngine {
   }
 
   Future<void> _executeActions(AutomationRule rule) async {
+    // Determine the LCD feedback based on the rule ID
+    String? lcdMsg;
+    if (rule.id.contains('night_security')) {
+      lcdMsg = 'AUTO_M';
+    } else if (rule.id.contains('auto_cooling')) {
+      lcdMsg = 'AUTO_H';
+    } else if (rule.id.contains('fire_safety')) {
+      lcdMsg = 'AUTO_F';
+    }
+
+    if (lcdMsg != null) {
+      _mqtt.publish('smarthome/system/lcd', lcdMsg);
+    }
+
     for (final action in rule.actions) {
       try {
         await _executeAction(action, rule);
@@ -201,16 +264,42 @@ class AutomationEngine {
 
   Future<void> _executeAction(
       AutomationAction action, AutomationRule rule) async {
+    if (action.deviceId == 'system') {
+      if (action.type == ActionType.sendNotification) {
+        await _sendNotification(action.value.toString(), rule);
+      } else if (action.type == ActionType.triggerAlarm) {
+        await _triggerAlarm(action.value.toString(), rule);
+      }
+      return;
+    }
+
     switch (action.type) {
       case ActionType.turnOn:
-        _mqtt.toggleDevice(action.deviceId, true);
+        final device = _devices.cast<Device?>().firstWhere(
+              (d) => d?.id == action.deviceId,
+              orElse: () => null,
+            );
+        if (device != null && !device.isOn) {
+          _mqtt.toggleDevice(action.deviceId, true);
+        }
         break;
       case ActionType.turnOff:
-        _mqtt.toggleDevice(action.deviceId, false);
+        final device = _devices.cast<Device?>().firstWhere(
+              (d) => d?.id == action.deviceId,
+              orElse: () => null,
+            );
+        if (device != null && device.isOn) {
+          _mqtt.toggleDevice(action.deviceId, false);
+        }
         break;
       case ActionType.toggle:
-        final device = _devices.firstWhere((d) => d.id == action.deviceId);
-        _mqtt.toggleDevice(action.deviceId, !device.isOn);
+        final device = _devices.cast<Device?>().firstWhere(
+              (d) => d?.id == action.deviceId,
+              orElse: () => null,
+            );
+        if (device != null) {
+          _mqtt.toggleDevice(action.deviceId, !device.isOn);
+        }
         break;
       case ActionType.setValue:
         if (action.property != null) {
@@ -281,9 +370,16 @@ class AutomationEngine {
   }
 
   void _handleMqttMessage(MqttMessage message) {
+    if (message.topic == SmartHomeHardware.systemStatusTopic) {
+      _handleSystemStatus(message);
+      return;
+    }
+
     // Update device cache when receiving device updates
-    if (message.messageType == 'status' || message.messageType == 'data') {
+    if ((message.messageType == 'status' || message.messageType == 'data') &&
+        message.topic.startsWith(SmartHomeHardware.deviceBaseTopic)) {
       _updateDeviceCache(message);
+      _scheduleEvaluation();
     }
 
     // Handle system events
@@ -292,23 +388,90 @@ class AutomationEngine {
     }
   }
 
+  void _handleSystemStatus(MqttMessage message) {
+    final data = message.data;
+    final autoMode = data['autoMode'];
+    if (autoMode is bool) {
+      final changed = _autoModeEnabled != autoMode;
+      _autoModeEnabled = autoMode;
+      if (changed) {
+        _emitEvent(AutomationEvent(
+          'auto_mode_changed',
+          autoMode ? 'Auto mode enabled' : 'Auto mode disabled',
+        ));
+        if (autoMode) {
+          _scheduleEvaluation();
+        } else {
+          _evaluationDebounceTimer?.cancel();
+        }
+      }
+    }
+  }
+
+  void _scheduleEvaluation() {
+    if (!_isRunning || !_autoModeEnabled) return;
+    _evaluationDebounceTimer?.cancel();
+    _evaluationDebounceTimer = Timer(const Duration(milliseconds: 250), () {
+      _evaluateRules();
+    });
+  }
+
   Future<void> _updateDeviceCache(MqttMessage message) async {
     try {
       final deviceId = message.deviceId;
       if (deviceId.isEmpty) return;
 
-      final device = await _db.getDevice(deviceId);
-      if (device != null) {
-        // Update device in cache
-        final index = _devices.indexWhere((d) => d.id == deviceId);
-        if (index != -1) {
-          _devices[index] = device;
-        }
+      var device = _devices.cast<Device?>().firstWhere(
+            (d) => d?.id == deviceId,
+            orElse: () => null,
+          );
+
+      device ??= await _db.getDevice(deviceId);
+      if (device == null) return;
+
+      final updatedDevice = _mergeDeviceUpdate(device, message.data);
+      final index = _devices.indexWhere((d) => d.id == deviceId);
+      if (index != -1) {
+        _devices[index] = updatedDevice;
+      } else {
+        _devices.add(updatedDevice);
       }
     } catch (e) {
       _emitEvent(
           AutomationEvent('cache_error', 'Error updating device cache: $e'));
     }
+  }
+
+  Device _mergeDeviceUpdate(Device device, Map<String, dynamic> data) {
+    bool? isOn;
+    DeviceStatus? status;
+
+    if (data.containsKey('isOn')) {
+      isOn = data['isOn'] as bool?;
+    }
+
+    if (data.containsKey('status')) {
+      final rawStatus = data['status'] as String?;
+      if (rawStatus != null) {
+        status = DeviceStatus.values.firstWhere(
+          (value) => value.name == rawStatus,
+          orElse: () => device.status,
+        );
+      }
+    }
+
+    final mergedProperties = Map<String, dynamic>.from(device.properties ?? {});
+    if (data.containsKey('properties')) {
+      final incomingProps = data['properties'] as Map<String, dynamic>;
+      mergedProperties.addAll(incomingProps);
+    }
+
+    return device.copyWith(
+      status: status ?? device.status,
+      isOn: isOn ?? device.isOn,
+      properties: mergedProperties,
+      lastUpdated: DateTime.now(),
+    );
   }
 
   void _handleSystemEvent(MqttMessage message) {
@@ -379,13 +542,21 @@ class AutomationEngine {
   }
 
   Future<void> enableRule(String ruleId) async {
-    final rule = _rules.firstWhere((r) => r.id == ruleId);
+    final rule = _rules.cast<AutomationRule?>().firstWhere(
+          (r) => r?.id == ruleId,
+          orElse: () => null,
+        );
+    if (rule == null) return;
     final updatedRule = rule.copyWith(isEnabled: true);
     await updateRule(updatedRule);
   }
 
   Future<void> disableRule(String ruleId) async {
-    final rule = _rules.firstWhere((r) => r.id == ruleId);
+    final rule = _rules.cast<AutomationRule?>().firstWhere(
+          (r) => r?.id == ruleId,
+          orElse: () => null,
+        );
+    if (rule == null) return;
     final updatedRule = rule.copyWith(isEnabled: false);
     await updateRule(updatedRule);
   }

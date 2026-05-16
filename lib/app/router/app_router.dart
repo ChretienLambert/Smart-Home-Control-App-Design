@@ -15,6 +15,9 @@ import '../screens/notifications_screen.dart';
 import '../screens/energy_screen.dart';
 import '../screens/security_screen.dart';
 import '../screens/profile_screen.dart';
+import '../screens/admin_dashboard_screen.dart';
+import '../screens/scenes_screen.dart';
+import '../screens/hardware_logs_screen.dart';
 import '../widgets/root_layout.dart';
 
 class AppRouter {
@@ -29,17 +32,24 @@ class AppRouter {
       final isLoggedIn = authProvider.isLoggedIn;
       final hasSeenOnboarding = authProvider.hasSeenOnboarding;
       final current = state.uri.toString();
+      final currentPath = state.uri.path;
 
       // If not logged in, enforce onboarding/login routes
       if (!isLoggedIn && !hasSeenOnboarding && current != '/onboarding') {
         // ignore: avoid_print
-        print('Router redirect -> /onboarding (not logged & not seen onboarding)');
+        print(
+            'Router redirect -> /onboarding (not logged & not seen onboarding)');
         return '/onboarding';
       }
 
       if (!isLoggedIn && hasSeenOnboarding) {
         // Allow access to auth pages only
-        const allowed = ['/login', '/register', '/forgot-password', '/onboarding'];
+        const allowed = [
+          '/login',
+          '/register',
+          '/forgot-password',
+          '/onboarding'
+        ];
         if (!allowed.contains(current)) {
           // ignore: avoid_print
           print('Router redirect -> /login (not logged & seen onboarding)');
@@ -49,10 +59,25 @@ class AppRouter {
 
       // If logged in, prevent access to auth/onboarding pages — send to dashboard
       if (isLoggedIn) {
-        const authPages = ['/login', '/register', '/forgot-password', '/onboarding', '/'];
+        const authPages = [
+          '/login',
+          '/register',
+          '/forgot-password',
+          '/onboarding',
+          '/'
+        ];
         if (authPages.contains(current)) {
+          final target = authProvider.isAdmin ? '/admin' : '/dashboard';
           // ignore: avoid_print
-          print('Router redirect -> /dashboard (already logged in)');
+          print('Router redirect -> $target (already logged in)');
+          return target;
+        }
+
+        if (authProvider.isAdmin && _isNormalHomeRoute(currentPath)) {
+          return '/admin';
+        }
+
+        if (!authProvider.isAdmin && currentPath == '/admin') {
           return '/dashboard';
         }
       }
@@ -153,6 +178,42 @@ class AppRouter {
           child: ProfileScreen(),
         ),
       ),
+      GoRoute(
+        path: '/admin',
+        builder: (context, state) => const RootLayout(
+          child: AdminDashboardScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/scenes',
+        builder: (context, state) => const RootLayout(
+          child: ScenesScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/hardware-logs',
+        builder: (context, state) => const RootLayout(
+          child: HardwareLogsScreen(),
+        ),
+      ),
     ],
   );
+
+  bool _isNormalHomeRoute(String current) {
+    const blockedRoutes = [
+      '/dashboard',
+      '/devices',
+      '/add-device',
+      '/automation',
+      '/automation/create',
+      '/notifications',
+      '/energy',
+      '/security',
+      '/scenes',
+    ];
+
+    return blockedRoutes.any(
+      (route) => current == route || current.startsWith('$route/'),
+    );
+  }
 }

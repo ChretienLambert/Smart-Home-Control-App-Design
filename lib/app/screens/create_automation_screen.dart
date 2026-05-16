@@ -53,8 +53,21 @@ class _CreateAutomationScreenState extends State<CreateAutomationScreen> {
     });
 
     try {
-      // Simulate creating automation - in real app, this would call an API
-      await Future.delayed(const Duration(seconds: 2));
+      final selectedTimeLabel = _selectedTime.format(context);
+      await Future.delayed(const Duration(milliseconds: 500));
+      final created = <String, dynamic>{
+        'id': DateTime.now().microsecondsSinceEpoch.toString(),
+        'name': _nameController.text.trim(),
+        'description': _actions.map((e) => e['name']).join(' • '),
+        'icon': _iconForTrigger(_selectedTrigger),
+        'isActive': true,
+        'trigger': _selectedTrigger,
+        'actions': _actions.map((e) => e['name']).toList(),
+        if (_selectedTrigger == 'Time') ...{
+          'time': selectedTimeLabel,
+          'days': List<String>.from(_selectedDays),
+        },
+      };
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -63,7 +76,7 @@ class _CreateAutomationScreenState extends State<CreateAutomationScreen> {
             backgroundColor: Color(0xFF1E7F5C),
           ),
         );
-        context.pop();
+        context.pop(created);
       }
     } catch (e) {
       if (mounted) {
@@ -80,6 +93,21 @@ class _CreateAutomationScreenState extends State<CreateAutomationScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  IconData _iconForTrigger(String trigger) {
+    switch (trigger) {
+      case 'Time':
+        return Icons.schedule;
+      case 'Device State':
+        return Icons.sensors;
+      case 'Location':
+        return Icons.location_on;
+      case 'Sensor':
+        return Icons.thermostat;
+      default:
+        return Icons.auto_awesome;
     }
   }
 
@@ -245,7 +273,7 @@ class _CreateAutomationScreenState extends State<CreateAutomationScreen> {
                         });
                       },
                       backgroundColor: Colors.grey[200],
-                      selectedColor: const Color(0xFF1E7F5C).withOpacity(0.2),
+                      selectedColor: const Color(0xFF1E7F5C).withValues(alpha: 0.2),
                       labelStyle: TextStyle(
                         color: isSelected
                             ? const Color(0xFF1E7F5C)

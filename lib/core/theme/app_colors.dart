@@ -57,14 +57,3 @@ class AppColors {
   static const Color shadowColor = Color(0x1A000000);
   static const Color lightShadowColor = Color(0x0D000000);
 }
-
-extension ColorExtension on Color {
-  Color withOpacity(double opacity) {
-    return Color.fromARGB(
-      (255 * opacity).round(),
-      r.toInt(),
-      g.toInt(),
-      b.toInt(),
-    );
-  }
-}
